@@ -11,8 +11,5 @@ insert_final_newline = true
 [*.md]
 trim_trailing_whitespace = false
 
-[*.json]
-insert_final_newline = true
-
 [*.{py,pyw}]
 indent_size = 4

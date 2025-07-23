@@ -2,4 +2,4 @@
 @echo off
 set "PYTHONDONTWRITEBYTECODE=1"
 set "PYTHONPATH=%~dp0\script\library"
-python "%~dp0\script\gmod_map_thumb.py" %1
+python "%~dp0\python-script\gmod_map_thumb.py" %1
