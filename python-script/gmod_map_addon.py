@@ -33,7 +33,7 @@ def remove_dirs(target: Path, names: list[str]):
     for name in names:
         path = target / name
         if path.exists() and path.is_dir():
-            print(f"{Color.GREEN}[REMOVE]{Color.RESET} {name}")
+            print(f"{Color.YELLOW}[REMOVE]{Color.RESET} {name}")
             rmtree(path, ignore_errors=True)
 
 
@@ -41,7 +41,7 @@ def remove_files_by_patterns(target: Path, patterns: list[str]):
     for pattern in patterns:
         for path in target.rglob(pattern):
             if path.is_file():
-                print(f"{Color.GREEN}[REMOVE]{Color.RESET} {path}")
+                print(f"{Color.YELLOW}[REMOVE]{Color.RESET} {path}")
                 try:
                     path.unlink()
                 except Exception as e:
@@ -174,7 +174,7 @@ def main():
     # Create 'addon.json' file
     print(f"{Color.GREEN}[ INFO ]{Color.RESET} Creating 'addon.json' file")
     (target / "addon.json").write_text(
-        f'{{\n  "title": "{dir_name}",\n  "type": "map",\n  "tags": [\n    "scenic",\n    "realism"\n  ]\n}}\n'
+        f'{{\n  "title": "{dir_name}",\n  "type": "map",\n  "tags": [\n    "scenic",\n    "realism"\n  ],\n  "ignore": [\n    "*.log",\n    "*.vmf",\n    "*.vmx"\n  ]\n}}\n'
     )
 
     # Remove 'data_static' if empty
