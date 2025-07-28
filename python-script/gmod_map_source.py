@@ -1,5 +1,5 @@
-from pathlib import Path
 import sys
+from pathlib import Path
 
 
 class Color:
@@ -9,73 +9,129 @@ class Color:
     RESET = "\033[0m"
     YELLOW = "\033[1;33m"
 
+
+class vstr(str):
+    def replace_input(self, old: str, new: str) -> "vstr":
+        return vstr(self.replace(f'"{old}"', f'"{new}"'))
+
+    def replace_output(self, old: str, new: str) -> "vstr":
+        return vstr(self.replace(f"{chr(27)}{old}{chr(27)}", f"{chr(27)}{new}{chr(27)}"))
+
+
 def replace(target: Path):
     if target.suffix != ".vmf":
         print(f"{Color.RED}[ERROR]{Color.RESET} '{target.name}' is not a VMF file", file=sys.stderr)
+        sys.exit(1)
 
     try:
-        content = target.read_text()
-        content = content.lower()
-        # Input
-        content = content.replace('"oncompletion"', '"OnCompletion"')
-        content = content.replace('"onendsequence"', '"OnEndSequence"')
-        content = content.replace('"onendtouch"', '"OnEndTouch"')
-        content = content.replace('"onentityspawned"', '"OnEntitySpawned"')
-        content = content.replace('"onmapspawn"', '"OnMapSpawn"')
-        content = content.replace('"onnpcstartedusing"', '"OnNPCStartedUsing"')
-        content = content.replace('"onnpcstoppedusing"', '"OnNPCStoppedUsing"')
-        content = content.replace('"onopen"', '"OnOpen"')
-        content = content.replace('"onpass"', '"OnPass"')
-        content = content.replace('"onplayeruse"', '"OnPlayerUse"')
-        content = content.replace('"onpressed"', '"OnPressed"')
-        content = content.replace('"onspawnnpc"', '"OnSpawnNPC"')
-        content = content.replace('"onstarttouch"', '"OnStartTouch"')
-        content = content.replace('"ontimer"', '"OnTimer"')
-        content = content.replace('"ontimerhigh"', '"OnTimerHigh"')
-        content = content.replace('"ontimerlow"', '"OnTimerLow"')
-        content = content.replace('"ontrigger"', '"OnTrigger"')
-        content = content.replace('"ontrigger1"', '"OnTrigger1"')
-        content = content.replace('"onuser1"', '"OnUser1"')
-        # Output
-        content = content.replace(f"{chr(27)}activate{chr(27)}", f"{chr(27)}Activate{chr(27)}")
-        content = content.replace(f"{chr(27)}addcontext{chr(27)}", f"{chr(27)}AddContext{chr(27)}")
-        content = content.replace(f"{chr(27)}beginsequence{chr(27)}", f"{chr(27)}BeginSequence{chr(27)}")
-        content = content.replace(f"{chr(27)}cancel{chr(27)}", f"{chr(27)}Cancel{chr(27)}")
-        content = content.replace(f"{chr(27)}command{chr(27)}", f"{chr(27)}Command{chr(27)}")
-        content = content.replace(f"{chr(27)}disablehint{chr(27)}", f"{chr(27)}DisableHint{chr(27)}")
-        content = content.replace(f"{chr(27)}display{chr(27)}", f"{chr(27)}Display{chr(27)}")
-        content = content.replace(f"{chr(27)}enable{chr(27)}", f"{chr(27)}Enable{chr(27)}")
-        content = content.replace(f"{chr(27)}enablehint{chr(27)}", f"{chr(27)}EnableHint{chr(27)}")
-        content = content.replace(f"{chr(27)}enablemotion{chr(27)}", f"{chr(27)}EnableMotion{chr(27)}")
-        content = content.replace(f"{chr(27)}fade{chr(27)}", f"{chr(27)}Fade{chr(27)}")
-        content = content.replace(f"{chr(27)}forcenpctoactbusy{chr(27)}", f"{chr(27)}ForceNPCToActBusy{chr(27)}")
-        content = content.replace(f"{chr(27)}forcespawn{chr(27)}", f"{chr(27)}ForceSpawn{chr(27)}")
-        content = content.replace(f"{chr(27)}forcethisnpctoleave{chr(27)}", f"{chr(27)}ForceThisNPCToLeave{chr(27)}")
-        content = content.replace(f"{chr(27)}hidesprite{chr(27)}", f"{chr(27)}HideSprite{chr(27)}")
-        content = content.replace(f"{chr(27)}kill{chr(27)}", f"{chr(27)}Kill{chr(27)}")
-        content = content.replace(f"{chr(27)}pause{chr(27)}", f"{chr(27)}Pause{chr(27)}")
-        content = content.replace(f"{chr(27)}playsound{chr(27)}", f"{chr(27)}PlaySound{chr(27)}")
-        content = content.replace(f"{chr(27)}resume{chr(27)}", f"{chr(27)}Resume{chr(27)}")
-        content = content.replace(f"{chr(27)}rollcredits{chr(27)}", f"{chr(27)}RollCredits{chr(27)}")
-        content = content.replace(f"{chr(27)}setautoexposuremax{chr(27)}", f"{chr(27)}SetAutoExposureMax{chr(27)}")
-        content = content.replace(f"{chr(27)}setautoexposuremin{chr(27)}", f"{chr(27)}SetAutoExposureMin{chr(27)}")
-        content = content.replace(f"{chr(27)}setbloomscale{chr(27)}", f"{chr(27)}SetBloomScale{chr(27)}")
-        content = content.replace(f"{chr(27)}spawn{chr(27)}", f"{chr(27)}Spawn{chr(27)}")
-        content = content.replace(f"{chr(27)}start{chr(27)}", f"{chr(27)}Start{chr(27)}")
-        content = content.replace(f"{chr(27)}startfire{chr(27)}", f"{chr(27)}StartFire{chr(27)}")
-        content = content.replace(f"{chr(27)}startforward{chr(27)}", f"{chr(27)}StartForward{chr(27)}")
-        content = content.replace(f"{chr(27)}stop{chr(27)}", f"{chr(27)}Stop{chr(27)}")
-        content = content.replace(f"{chr(27)}stopsound{chr(27)}", f"{chr(27)}StopSound{chr(27)}")
-        content = content.replace(f"{chr(27)}toggle{chr(27)}", f"{chr(27)}Toggle{chr(27)}")
-        content = content.replace(f"{chr(27)}togglesprite{chr(27)}", f"{chr(27)}ToggleSprite{chr(27)}")
-        content = content.replace(f"{chr(27)}trigger{chr(27)}", f"{chr(27)}Trigger{chr(27)}")
-        content = content.replace(f"{chr(27)}turnoff{chr(27)}", f"{chr(27)}TurnOff{chr(27)}")
-        content = content.replace(f"{chr(27)}turnon{chr(27)}", f"{chr(27)}TurnOn{chr(27)}")
-        content = content.replace(f"{chr(27)}unlock{chr(27)}", f"{chr(27)}Unlock{chr(27)}")
+        content: vstr = vstr(target.read_text().lower())
+        #######################
+        #    Generic Input    #
+        #######################
+        content = content.replace_input("onbeginsequence", "OnBeginSequence")
+        content = content.replace_input("onbreak", "OnBreak")
+        content = content.replace_input("oncase01", "OnCase01")
+        content = content.replace_input("oncase02", "OnCase02")
+        content = content.replace_input("oncase03", "OnCase03")
+        content = content.replace_input("oncase04", "OnCase04")
+        content = content.replace_input("oncase05", "OnCase05")
+        content = content.replace_input("oncase06", "OnCase06")
+        content = content.replace_input("oncase07", "OnCase07")
+        content = content.replace_input("oncase08", "OnCase08")
+        content = content.replace_input("oncase09", "OnCase09")
+        content = content.replace_input("oncase10", "OnCase10")
+        content = content.replace_input("oncase11", "OnCase11")
+        content = content.replace_input("oncase12", "OnCase12")
+        content = content.replace_input("oncase13", "OnCase13")
+        content = content.replace_input("oncase14", "OnCase14")
+        content = content.replace_input("oncase15", "OnCase15")
+        content = content.replace_input("oncase16", "OnCase16")
+        content = content.replace_input("oncompletion", "OnCompletion")
+        content = content.replace_input("onendsequence", "OnEndSequence")
+        content = content.replace_input("onendtouch", "OnEndTouch")
+        content = content.replace_input("onentityspawned", "OnEntitySpawned")
+        content = content.replace_input("onfalse", "OnFalse")
+        content = content.replace_input("onhealthchanged", "OnHealthChanged")
+        content = content.replace_input("onhitmax", "OnHitMax")
+        content = content.replace_input("onmapspawn", "OnMapSpawn")
+        content = content.replace_input("onnpcstartedusing", "OnNPCStartedUsing")
+        content = content.replace_input("onnpcstoppedusing", "OnNPCStoppedUsing")
+        content = content.replace_input("onopen", "OnOpen")
+        content = content.replace_input("onpass", "OnPass")
+        content = content.replace_input("onplayeruse", "OnPlayerUse")
+        content = content.replace_input("onpressed", "OnPressed")
+        content = content.replace_input("onspawnnpc", "OnSpawnNPC")
+        content = content.replace_input("onstart", "OnStart")
+        content = content.replace_input("onstarttouch", "OnStartTouch")
+        content = content.replace_input("ontimer", "OnTimer")
+        content = content.replace_input("ontimerhigh", "OnTimerHigh")
+        content = content.replace_input("ontimerlow", "OnTimerLow")
+        content = content.replace_input("ontrigger", "OnTrigger")
+        content = content.replace_input("ontrigger1", "OnTrigger1")
+        content = content.replace_input("ontrue", "OnTrue")
+        content = content.replace_input("onuselocked", "OnUseLocked")
+        content = content.replace_input("onuser1", "OnUser1")
+        ########################
+        #    Generic Output    #
+        ########################
+        content = content.replace_output("activate", "Activate")
+        content = content.replace_output("add", "Add")
+        content = content.replace_output("addcontext", "AddContext")
+        content = content.replace_output("beginsequence", "BeginSequence")
+        content = content.replace_output("cancel", "Cancel")
+        content = content.replace_output("close", "Close")
+        content = content.replace_output("color", "Color")
+        content = content.replace_output("command", "Command")
+        content = content.replace_output("disable", "Disable")
+        content = content.replace_output("disablehint", "DisableHint")
+        content = content.replace_output("display", "Display")
+        content = content.replace_output("enable", "Enable")
+        content = content.replace_output("enablehint", "EnableHint")
+        content = content.replace_output("enablemotion", "EnableMotion")
+        content = content.replace_output("explode", "Explode")
+        content = content.replace_output("fade", "Fade")
+        content = content.replace_output("forcenpctoactbusy", "ForceNPCToActBusy")
+        content = content.replace_output("forcespawn", "ForceSpawn")
+        content = content.replace_output("forcethisnpctoleave", "ForceThisNPCToLeave")
+        content = content.replace_output("hidesprite", "HideSprite")
+        content = content.replace_output("kill", "Kill")
+        content = content.replace_output("open", "Open")
+        content = content.replace_output("pause", "Pause")
+        content = content.replace_output("pickrandom", "PickRandom")
+        content = content.replace_output("playsound", "PlaySound")
+        content = content.replace_output("resume", "Resume")
+        content = content.replace_output("rollcredits", "RollCredits")
+        content = content.replace_output("setautoexposuremax", "SetAutoExposureMax")
+        content = content.replace_output("setautoexposuremin", "SetAutoExposureMin")
+        content = content.replace_output("setbloomscale", "SetBloomScale")
+        content = content.replace_output("setvalue", "SetValue")
+        content = content.replace_output("showsprite", "ShowSprite")
+        content = content.replace_output("skin", "Skin")
+        content = content.replace_output("spawn", "Spawn")
+        content = content.replace_output("start", "Start")
+        content = content.replace_output("startfire", "StartFire")
+        content = content.replace_output("startforward", "StartForward")
+        content = content.replace_output("stop", "Stop")
+        content = content.replace_output("stopsound", "StopSound")
+        content = content.replace_output("subtract", "Subtract")
+        content = content.replace_output("test", "Test")
+        content = content.replace_output("toggle", "Toggle")
+        content = content.replace_output("togglesprite", "ToggleSprite")
+        content = content.replace_output("trigger", "Trigger")
+        content = content.replace_output("turnoff", "TurnOff")
+        content = content.replace_output("turnon", "TurnOn")
+        content = content.replace_output("unlock", "Unlock")
+        #######################
+        #    Custom Entity    #
+        #######################
+        # Get A Life - env_textgal
+        content = content.replace_input("env_textgal", "game_text")
+        content = content.replace_output("displaytext", "Display")
         #
         target.write_text(content)
     except Exception as e:
         print(f"{Color.RED}[ERROR]{Color.RESET} Failed to process '{target}': {e}")
+
 
 ##########
 #  MAIN  #
@@ -92,6 +148,7 @@ def main():
             replace(src)
     else:
         print(f"{Color.RED}[ERROR]{Color.RESET} There is no file to process", file=sys.stderr)
+
 
 if __name__ == "__main__":
     main()
