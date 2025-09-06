@@ -1,7 +1,8 @@
 import os
+import platform
 import re
 import sys
-import platform
+from fnmatch import fnmatch
 from pathlib import Path
 from shutil import move, rmtree
 
@@ -73,6 +74,23 @@ def remove_files_by_patterns(target: Path, patterns: list[str]):
     for pattern in patterns:
         for path in target.rglob(pattern):
             if path.is_file():
+                print(f"{Color.YELLOW}[REMOVE ]{Color.RESET} {path}")
+                try:
+                    path.unlink()
+                except Exception as e:
+                    print(f"{Color.RED}[ ERROR ]{Color.RESET} Failed to delete '{path}': {e}")
+
+
+def remove_files_by_exception(target: Path, exceptions: list[str]):
+    for path in target.rglob("*"):
+        if path.is_file():
+            name = path.name.lower()
+            keep = False
+            for ex in exceptions:
+                if fnmatch(name, ex):
+                    keep = True
+                    break
+            if not keep:
                 print(f"{Color.YELLOW}[REMOVE ]{Color.RESET} {path}")
                 try:
                     path.unlink()
@@ -165,7 +183,7 @@ def main():
     )
 
     # Remove files in 'materials' dir
-    remove_files_by_patterns(target / "materials", ["*.vtx", "*.vvd", "*.mdl", "*.phy", "*.jpg", "*.png"])
+    remove_files_by_exception(target / "materials", ["*.vmt", "*.vtf"])
 
     # Remove files in 'models' dir
     remove_files_by_patterns(target / "models", ["*.vtf", "*.vmt", "*.jpg", "*.png"])
