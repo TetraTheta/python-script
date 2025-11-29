@@ -33,9 +33,9 @@ def lowercase_names(dir: Path):
 
 def remove_dirs(target: Path, names: list[str]):
     for name in names:
-        path = target / name
+        path = target.joinpath(*Path(name).parts).resolve()
         if path.exists() and path.is_dir():
-            print(f"{Color.YELLOW}[REMOVE ]{Color.RESET} {name}")
+            print(f"{Color.YELLOW}[REMOVE ]{Color.RESET} {path}")
             rmtree(path, ignore_errors=True)
 
 
@@ -158,6 +158,21 @@ def main():
     print(f"{Color.GREEN}[ INFO  ]{Color.RESET} Lowercase file/dir names")
     lowercase_names(target)
 
+    # Create 'data_static' dir
+    data_static = target / "data_static"
+    data_static.mkdir(exist_ok=True)
+
+    # Move every files under 'readme' and 'readmes' to 'data_static'
+    readme = target / "readme"
+    readmes = target / "readmes"
+    for f in (readme, readmes):
+        if f.is_dir():
+            for file in f.iterdir():
+                if file.is_file():
+                    dest = data_static / file.name
+                    print(f"{Color.GREEN}[ INFO  ]{Color.RESET} {file} -> {dest}")
+                    move(file, dest)
+
     # Remove directories
     print(f"{Color.GREEN}[ INFO  ]{Color.RESET} Remove directories")
     remove_dirs(
@@ -166,13 +181,16 @@ def main():
             "bin",
             "cfg",
             "downloadlists",
+            "materials/console",
+            "materials/vgui",
             "materialsrc",
             "media",
             "save",
             "screenshots",
+            "sound/ui",
+            "steam-grid-view-images",
             "steam-gridview-icons",
             "steam-gridview-images",
-            "sound/ui",
         ],
     )
 
@@ -188,13 +206,18 @@ def main():
     # Remove files in 'models' dir
     remove_files_by_patterns(target / "models", ["*.vtf", "*.vmt", "*.jpg", "*.png"])
 
+    # Remove files in 'particles' dir
+    remove_files_by_patterns(target / "particles", ["particles_manifest.txt"])
+
+    # Remove files in 'resource' dir
+    remove_files_by_exception(target / "resource", ["*.txt"])
+
+    # Remove files in 'scripts' dir
+    remove_files_by_patterns(target / "scripts", ["*manifest.txt", "chapterbackgrounds.txt"])
+
     # Replace MapBase shader
     print(f"{Color.GREEN}[ INFO  ]{Color.RESET} Modifying material files")
     replace_material_shader(target / "materials")
-
-    # Create 'data_static' dir
-    data_static = target / "data_static"
-    data_static.mkdir(exist_ok=True)
 
     # Move 'readme*' files to 'data_static'
     for file in target.glob("readme*"):
