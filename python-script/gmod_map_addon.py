@@ -197,7 +197,7 @@ def main():
     # Remove files
     print(f"{Color.GREEN}[ INFO  ]{Color.RESET} Remove files")
     remove_files_by_patterns(
-        target, ["*.bak", "*.cache", "*.db", "*.image", "*.raw", "*.tga", "*.sw.vtx", "*.xbox.vtx"]
+        target, ["*.bak", "*.cache", "*.db", "*.image", "*.raw", "*.tga", "*.sw.vtx", "*.xbox.vtx", "desktop.ini"]
     )
 
     # Remove files in 'materials' dir
