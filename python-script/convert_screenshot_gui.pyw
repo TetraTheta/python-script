@@ -275,7 +275,7 @@ class ConvertScreenshotGUI:
         if should_blur(actual_w, actual_h):
             for i, (x, y, w, h) in enumerate(self.job["blur"]):
                 parts.append(f"{last}split=2[base{i}][tmp{i}]")
-                parts.append(f"[tmp{i}]crop={w}:{h}:{x}:{y},boxblur=10:1:5:1:0:0[blur{i}]")
+                parts.append(f"[tmp{i}]crop={w}:{h}:{x}:{y},boxblur=min(w\,h)/2:5:min(cw\,ch)/2:5:min(w\,h)/2:5[blur{i}]") # pyright: ignore[reportInvalidStringEscapeSequence]
                 parts.append(f"[base{i}][blur{i}]overlay={x}:{y}[out{i}]")
                 last = f"[out{i}]"
 

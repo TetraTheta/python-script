@@ -65,7 +65,7 @@ CONFIG = {
             "background": {
                 "crop_height": 360,
                 "crop_position": "bottom",
-                "blur": [[40, 1054, 330, 22], [1733, 1058, 140, 22]],
+                "blur": [[109, 1049, 134, 15]],
             },
             "center": {
                 "crop_height": 200,
@@ -75,42 +75,42 @@ CONFIG = {
             "cutscene": {
                 "crop_height": 810,
                 "crop_position": "center",
-                "blur": [[1781, 929, 110, 16]],
+                "blur": [[109, 1049, 134, 15]],
             },
             "foreground0": {
                 "crop_height": 310,
                 "crop_position": "bottom",
-                "blur": [[1733, 1058, 140, 22]],
+                "blur": [[109, 1049, 134, 15]],
             },
             "foreground1": {
                 "crop_height": 420,
                 "crop_position": "bottom",
-                "blur": [[1733, 1058, 140, 22]],
+                "blur": [[109, 1049, 134, 15]],
             },
             "foreground2": {
                 "crop_height": 505,
                 "crop_position": "bottom",
-                "blur": [[1733, 1058, 140, 22]],
+                "blur": [[109, 1049, 134, 15]],
             },
             "foreground3": {
                 "crop_height": 580,
                 "crop_position": "bottom",
-                "blur": [[1733, 1058, 140, 22]],
+                "blur": [[109, 1049, 134, 15]],
             },
             "foreground4": {
                 "crop_height": 655,
                 "crop_position": "bottom",
-                "blur": [[1733, 1058, 140, 22]],
+                "blur": [[109, 1049, 134, 15]],
             },
             "foreground5": {
                 "crop_height": 730,
                 "crop_position": "bottom",
-                "blur": [[1733, 1058, 140, 22]],
+                "blur": [[109, 1049, 134, 15]],
             },
             "full": {
                 "crop_height": 0,
                 "crop_position": "full",
-                "blur": [[40, 1054, 330, 22], [1733, 1058, 140, 22]],
+                "blur": [[109, 1049, 134, 15]],
             },
         },
     },
