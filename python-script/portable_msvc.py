@@ -67,7 +67,7 @@ def download_progress(url, check, filename):
     global total_download
     with fpath.open("wb") as f:
         data = io.BytesIO()
-        req = Request(url, headers= {"User-Agent": "Mozilla/5.0"})
+        req = Request(url, headers={"User-Agent": "Mozilla/5.0"})
         with urllib.request.urlopen(req, context=ssl_context) as res:
             total_hdr = res.headers["Content-Length"]
             total = int(total_hdr) if total_hdr and total_hdr.isdigit() else None
