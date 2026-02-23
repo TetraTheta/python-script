@@ -225,6 +225,7 @@ class ConvertScreenshotGUI:
 
         cmd = [
             "ffmpeg",
+            "-hide_banner",
             "-y",
             "-i",
             str(src),
