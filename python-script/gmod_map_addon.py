@@ -1,6 +1,7 @@
 import os
 import platform
 import re
+import stat
 import sys
 from fnmatch import fnmatch
 from pathlib import Path
@@ -26,9 +27,16 @@ def lowercase_names(dir: Path):
                 f"{Color.YELLOW}[RENAME ]{Color.RESET} {item.parent}{os.sep}{{{Color.YELLOW}{item.name}{Color.RESET} → {Color.YELLOW}{new_name}{Color.RESET}}}"
             )
             try:
+                make_writable(item)
                 item.rename(new_path)
             except OSError as e:
                 print(f"{Color.RED}[ ERROR ]{Color.RESET} Failed to rename '{item}': {e}")
+
+
+def make_writable(path: Path):
+    if path.exists():
+        mode = os.stat(path).st_mode
+        os.chmod(path, mode | stat.S_IWRITE)
 
 
 def remove_dirs(target: Path, names: list[str]):
@@ -36,7 +44,12 @@ def remove_dirs(target: Path, names: list[str]):
         path = target.joinpath(*Path(name).parts).resolve()
         if path.exists() and path.is_dir():
             print(f"{Color.YELLOW}[REMOVE ]{Color.RESET} {path}")
-            rmtree(path, ignore_errors=True)
+            rmtree(path, onerror=remove_readonly)
+
+
+def remove_readonly(func, path, excinfo):
+    os.chmod(path, stat.S_IWRITE)
+    func(path)
 
 
 def remove_empty_directory(current: Path, root: Path):
@@ -76,6 +89,7 @@ def remove_files_by_patterns(target: Path, patterns: list[str]):
             if path.is_file():
                 print(f"{Color.YELLOW}[REMOVE ]{Color.RESET} {path}")
                 try:
+                    make_writable(path)
                     path.unlink()
                 except Exception as e:
                     print(f"{Color.RED}[ ERROR ]{Color.RESET} Failed to delete '{path}': {e}")
@@ -93,6 +107,7 @@ def remove_files_by_exception(target: Path, exceptions: list[str]):
             if not keep:
                 print(f"{Color.YELLOW}[REMOVE ]{Color.RESET} {path}")
                 try:
+                    make_writable(path)
                     path.unlink()
                 except Exception as e:
                     print(f"{Color.RED}[ ERROR ]{Color.RESET} Failed to delete '{path}': {e}")
@@ -101,6 +116,7 @@ def remove_files_by_exception(target: Path, exceptions: list[str]):
 def replace_material_shader(materials_dir: Path):
     for vmt in materials_dir.rglob("*.vmt"):
         try:
+            make_writable(vmt)
             content = vmt.read_text()
             content = content.replace('"SDK_LightmappedGeneric"', '"LightmappedGeneric"')
             content = content.replace('"SDK_Sprite"', '"Sprite"')
