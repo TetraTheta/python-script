@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+from __future__ import annotations
+
 import argparse
 import hashlib
 import io
@@ -6,6 +8,7 @@ import json
 import os
 import re
 import shutil
+import ssl
 import stat
 import subprocess
 import sys
@@ -13,8 +16,25 @@ import tempfile
 import urllib.error
 import urllib.request
 import zipfile
+from collections.abc import Callable, Iterable, Iterator
 from pathlib import Path
+from typing import TypeVar
 from urllib.request import Request
+
+T = TypeVar("T")
+
+
+class PortableMsvcNamespace(argparse.Namespace):
+    accept_license: bool
+    host: str
+    insiders: bool
+    location: str | None
+    msvc_version: str | None
+    sdk_version: str | None
+    show_versions: bool
+    target: str
+    vs: str
+
 
 OUTPUT = Path("msvc")  # output folder (may be overridden by --location)
 DOWNLOADS = Path("downloads")  # temporary download files
@@ -31,16 +51,28 @@ DEFAULT_VERSION = "latest"
 ALL_VERSIONS = "2019 2022 2026 latest".split()
 
 MANIFEST_URLS = {
-    "latest": ["https://aka.ms/vs/stable/channel", "https://aka.ms/vs/insiders/channel"],
-    "2026": ["https://aka.ms/vs/18/stable/channel", "https://aka.ms/vs/18/insiders/channel"],
-    "2022": ["https://aka.ms/vs/17/release/channel", "https://aka.ms/vs/17/pre/channel"],
-    "2019": ["https://aka.ms/vs/16/release/channel", "https://aka.ms/vs/16/pre/channel"],
+    "latest": [
+        "https://aka.ms/vs/stable/channel",
+        "https://aka.ms/vs/insiders/channel",
+    ],
+    "2026": [
+        "https://aka.ms/vs/18/stable/channel",
+        "https://aka.ms/vs/18/insiders/channel",
+    ],
+    "2022": [
+        "https://aka.ms/vs/17/release/channel",
+        "https://aka.ms/vs/17/pre/channel",
+    ],
+    "2019": [
+        "https://aka.ms/vs/16/release/channel",
+        "https://aka.ms/vs/16/pre/channel",
+    ],
 }
 
-ssl_context = None
+ssl_context: ssl.SSLContext | None = None
 
 
-def download(url_or_req):
+def download(url_or_req: str | Request) -> bytes:
     if isinstance(url_or_req, str):
         req = Request(url_or_req, headers={"User-Agent": "Mozilla/5.0"})
     else:
@@ -52,7 +84,7 @@ def download(url_or_req):
 total_download = 0
 
 
-def download_progress(url, check, filename):
+def download_progress(url: str, check: str | None, filename: str) -> bytes:
     fpath = DOWNLOADS / filename
     if fpath.exists():
         data = fpath.read_bytes()
@@ -89,13 +121,13 @@ def download_progress(url, check, filename):
         if check:
             digest = hashlib.sha256(data).hexdigest()
             if check.lower() != digest:
-                sys.exit(f"Hash mismatch for f{pkg}")
+                sys.exit(f"Hash mismatch for {filename}")
         total_download += len(data)
         return data
 
 
-# super crappy msi format parser just to find required .cab files
-def get_msi_cabs(msi):
+# Minimal MSI scanner used only to find required .cab file names.
+def get_msi_cabs(msi: bytes) -> Iterator[str]:
     index = 0
     while True:
         index = msi.find(b".cab", index + 4)
@@ -104,8 +136,19 @@ def get_msi_cabs(msi):
         yield msi[index - 32 : index + 4].decode("ascii")
 
 
-def first(items, cond=lambda x: True):
+def first(items: Iterable[T], cond: Callable[[T], bool] = lambda item: True) -> T | None:
     return next((item for item in items if cond(item)), None)
+
+
+def first_or_exit(
+    items: Iterable[T],
+    cond: Callable[[T], bool] = lambda item: True,
+    message: str = "Required item not found",
+) -> T:
+    item = first(items, cond)
+    if item is None:
+        sys.exit(message)
+    return item
 
 
 ### parse command-line arguments
@@ -117,14 +160,23 @@ ap.add_argument("--insiders", "--preview", action="store_true", help="Use inside
 ap.add_argument("--location", help="Base location to store MSVC (e.g. C:\\ or C:\\msvc)")
 ap.add_argument("--msvc-version", help="Get specific MSVC version")
 ap.add_argument("--sdk-version", help="Get specific Windows SDK version")
-ap.add_argument("--show-versions", action="store_true", help="Show available MSVC and Windows SDK versions")
 ap.add_argument(
-    "--target", default=DEFAULT_TARGET, help=f"Target architectures, comma separated ({','.join(ALL_TARGETS)})"
+    "--show-versions",
+    action="store_true",
+    help="Show available MSVC and Windows SDK versions",
 )
 ap.add_argument(
-    "--vs", default=DEFAULT_VERSION, help="Visual Studio version to use for installation", choices=ALL_VERSIONS
+    "--target",
+    default=DEFAULT_TARGET,
+    help=f"Target architectures, comma separated ({','.join(ALL_TARGETS)})",
 )
-args = ap.parse_args()
+ap.add_argument(
+    "--vs",
+    default=DEFAULT_VERSION,
+    help="Visual Studio version to use for installation",
+    choices=ALL_VERSIONS,
+)
+args = ap.parse_args(namespace=PortableMsvcNamespace())
 
 if args.location:
     loc = Path(args.location)
@@ -149,17 +201,16 @@ URL = MANIFEST_URLS[args.vs][args.insiders]
 try:
     manifest = json.loads(download(URL))
 except urllib.error.URLError as err:
-    import ssl
-
     if isinstance(err.args[0], ssl.SSLCertVerificationError):
-        # for more info about Python & issues with Windows certificates see https://stackoverflow.com/a/52074591
+        # See https://stackoverflow.com/a/52074591 for Windows certificate details.
         print("ERROR: ssl certificate verification error")
         try:
-            import certifi
+            import certifi  # pyright: ignore[reportMissingImports] - This must be installed by user
         except ModuleNotFoundError:
             print("ERROR: please install 'certifi' package to use Mozilla certificates")
             print(
-                "ERROR: or update your Windows certs, see instructions here: https://woshub.com/updating-trusted-root-certificates-in-windows-10/#h2_3"
+                "ERROR: or update your Windows certs. See: "
+                "https://woshub.com/updating-trusted-root-certificates-in-windows-10/#h2_3"
             )
             sys.exit()
         print("NOTE: retrying with certifi certificates")
@@ -176,7 +227,11 @@ ITEM_NAME = (
     else "Microsoft.VisualStudio.Manifests.VisualStudio"
 )
 
-vs = first(manifest["channelItems"], lambda x: x["id"] == ITEM_NAME)
+vs = first_or_exit(
+    manifest["channelItems"],
+    lambda x: x["id"] == ITEM_NAME,
+    "Visual Studio manifest item not found in channel manifest",
+)
 payload = vs["payloads"][0]["url"]
 
 vsmanifest = json.loads(download(payload))
@@ -227,11 +282,16 @@ print(f"Downloading MSVC v{msvc_ver} and Windows SDK v{sdk_ver}")
 
 ### agree to license
 
-tools = first(
+tools = first_or_exit(
     manifest["channelItems"],
     lambda x: x["id"] == "Microsoft.VisualStudio.Product.BuildTools",
+    "BuildTools product item not found in channel manifest",
 )
-resource = first(tools["localizedResources"], lambda x: x["language"] == "en-us")
+resource = first_or_exit(
+    tools["localizedResources"],
+    lambda x: x["language"] == "en-us",
+    "en-us localized resource not found for BuildTools",
+)
 license = resource["license"]
 
 if not args.accept_license:
@@ -271,15 +331,27 @@ for target in targets:
     redist_pkg = f"microsoft.vc.{msvc_ver}.crt.redist.{target}{redist_suffix}.base"
     if redist_pkg not in packages:
         redist_name = f"microsoft.visualcpp.crt.redist.{target}{redist_suffix}"
-        redist = first(packages[redist_name])
-        redist_pkg = first(redist["dependencies"], lambda dep: dep.endswith(".base")).lower()
+        redist = first_or_exit(
+            packages[redist_name],
+            message=f"Redistributable package entry not found: {redist_name}",
+        )
+        redist_dep = first_or_exit(
+            redist["dependencies"],
+            lambda dep: dep.endswith(".base"),
+            message=f"Base dependency not found for package: {redist_name}",
+        )
+        redist_pkg = redist_dep.lower()
     msvc_packages += [redist_pkg]
 
 for pkg in sorted(msvc_packages):
     if pkg not in packages:
         print(f"\r{pkg} ... !!! MISSING !!!")
         continue
-    p = first(packages[pkg], lambda p: p.get("language") in (None, "en-US"))
+    p = first_or_exit(
+        packages[pkg],
+        lambda package_item: package_item.get("language") in (None, "en-US"),
+        message=f"Package payload metadata not found: {pkg}",
+    )
     for payload in p["payloads"]:
         filename = payload["fileName"]
         download_progress(payload["url"], payload["sha256"], filename)
@@ -314,7 +386,11 @@ with tempfile.TemporaryDirectory(dir=DOWNLOADS) as d:
     dst = Path(d)
 
     sdk_pkg = packages[sdk_pid][0]
-    sdk_pkg = packages[first(sdk_pkg["dependencies"]).lower()][0]
+    sdk_dep = first_or_exit(
+        sdk_pkg["dependencies"],
+        message=f"SDK dependency not found for package: {sdk_pid}",
+    )
+    sdk_pkg = packages[sdk_dep.lower()][0]
 
     msi = []
     cabs = []
@@ -330,7 +406,11 @@ with tempfile.TemporaryDirectory(dir=DOWNLOADS) as d:
 
     # download .cab files
     for pkg in cabs:
-        payload = first(sdk_pkg["payloads"], lambda p: p["fileName"] == f"Installers\\{pkg}")
+        payload = first_or_exit(
+            sdk_pkg["payloads"],
+            lambda p: p["fileName"] == f"Installers\\{pkg}",
+            message=f"Installer payload not found for cab: {pkg}",
+        )
         download_progress(payload["url"], payload["sha256"], pkg)
 
     print("Unpacking msi files...")
@@ -341,11 +421,11 @@ with tempfile.TemporaryDirectory(dir=DOWNLOADS) as d:
         (OUTPUT / m.name).unlink()
 
 
-def download_cmake_windows():
+def download_cmake_windows() -> bool:
     try:
         html = download("https://cmake.org/download/").decode("utf-8", "ignore")
-    except Exception as e:
-        print("Warning: failed to fetch CMake download page:", e)
+    except OSError as error:
+        print("Warning: failed to fetch CMake download page:", error)
         return False
 
     m = re.search(r'href="([^"]*cmake-[^"]*-windows-x86_64.zip)"', html)
@@ -362,28 +442,28 @@ def download_cmake_windows():
     m2 = re.search(r'href="([^"]*cmake-[^"]*-SHA-256.txt)"', html)
     if m2:
         sha_url = m2.group(1)
-    if sha_url.startswith("//"):
-        sha_url = "https:" + sha_url
-    elif sha_url.startswith("/"):
-        sha_url = "https://cmake.org" + sha_url
-    try:
-        sha_text = download(sha_url).decode("utf-8", "ignore")
-        zipname = zip_url.split("/")[-1]
-        for line in sha_text.splitlines():
-            if zipname in line:
-                mh = re.search(r"([a-fA-F0-9]{64})", line)
-                if mh:
-                    sha = mh.group(1)
-                    break
-    except Exception:
-        sha = None
+        if sha_url.startswith("//"):
+            sha_url = "https:" + sha_url
+        elif sha_url.startswith("/"):
+            sha_url = "https://cmake.org" + sha_url
+        try:
+            sha_text = download(sha_url).decode("utf-8", "ignore")
+            zipname = zip_url.split("/")[-1]
+            for line in sha_text.splitlines():
+                if zipname in line:
+                    mh = re.search(r"([a-fA-F0-9]{64})", line)
+                    if mh:
+                        sha = mh.group(1)
+                        break
+        except OSError:
+            sha = None
 
     filename = zip_url.split("/")[-1]
     print(f"Downloading {filename} ...")
     try:
         data = download_progress(zip_url, sha, filename)
-    except Exception as e:
-        print("Warning: failed to download CMake:", e)
+    except OSError as error:
+        print("Warning: failed to download CMake:", error)
         return False
 
     with tempfile.TemporaryDirectory(dir=DOWNLOADS) as td:
@@ -410,13 +490,13 @@ def download_cmake_windows():
     return True
 
 
-def download_ninja_windows():
+def download_ninja_windows() -> bool:
     zip_url = "https://github.com/ninja-build/ninja/releases/latest/download/ninja-win.zip"
     filename = "ninja-win.zip"
     try:
         data = download_progress(zip_url, None, filename)
-    except Exception as e:
-        print("Warning: failed to download Ninja:", e)
+    except OSError as error:
+        print("Warning: failed to download Ninja:", error)
         return False
 
     with zipfile.ZipFile(io.BytesIO(data)) as zf:
@@ -430,7 +510,7 @@ def download_ninja_windows():
                 try:
                     st = os.stat(out)
                     os.chmod(out, st.st_mode | stat.S_IEXEC)
-                except Exception:
+                except OSError:
                     pass
                 print("Ninja installed to", out)
                 return True
@@ -445,17 +525,26 @@ ninja_ok = download_ninja_windows()
 
 ### versions
 
-msvcv = first((OUTPUT / "VC/Tools/MSVC").glob("*")).name
-sdkv = first((OUTPUT / "Windows Kits/10/bin").glob("*")).name
+msvcv = first_or_exit(
+    (OUTPUT / "VC/Tools/MSVC").glob("*"),
+    message="Installed MSVC version directory not found",
+).name
+sdkv = first_or_exit(
+    (OUTPUT / "Windows Kits/10/bin").glob("*"),
+    message="Installed Windows SDK bin directory not found",
+).name
 
 
-# place debug CRT runtime files into MSVC bin folder (not what real Visual Studio installer does... but is reasonable)
+# Place debug CRT runtime files into MSVC bin folder.
 # NOTE: these are Target architecture, not Host architecture binaries
 
 redist = OUTPUT / "VC/Redist"
 
 if redist.exists():
-    redistv = first((redist / "MSVC").glob("*")).name
+    redistv = first_or_exit(
+        (redist / "MSVC").glob("*"),
+        message="MSVC redist version directory not found",
+    ).name
     src = redist / "MSVC" / redistv / "debug_nonredist"
     for target in targets:
         for f in (src / target).glob("**/*.dll"):
@@ -465,8 +554,8 @@ if redist.exists():
     shutil.rmtree(redist)
 
 
-# copy msdia140.dll file into MSVC bin folder
-# NOTE: this is meant only for development - always Host architecture, even when placed into all Target architecture folders
+# Copy msdia140.dll file into MSVC bin folder.
+# NOTE: this is meant only for development and is always Host architecture.
 
 msdia140dll = {
     "x86": "msdia140.dll",
@@ -518,6 +607,25 @@ build.mkdir(parents=True, exist_ok=True)
 ### setup.bat
 
 for target in targets:
+    path_value = (
+        rf"%~dp0VC\Tools\MSVC\{msvcv}\bin\Host{host}\{target};"
+        rf"%~dp0Windows Kits\10\bin\{sdkv}\{host};"
+        rf"%~dp0Windows Kits\10\bin\{sdkv}\{host}\ucrt;"
+        r"%~dp0CMake\bin;%~dp0Ninja;%PATH%"
+    )
+    include_value = (
+        rf"%~dp0VC\Tools\MSVC\{msvcv}\include;"
+        rf"%~dp0Windows Kits\10\Include\{sdkv}\ucrt;"
+        rf"%~dp0Windows Kits\10\Include\{sdkv}\shared;"
+        rf"%~dp0Windows Kits\10\Include\{sdkv}\um;"
+        rf"%~dp0Windows Kits\10\Include\{sdkv}\winrt;"
+        rf"%~dp0Windows Kits\10\Include\{sdkv}\cppwinrt"
+    )
+    lib_value = (
+        rf"%~dp0VC\Tools\MSVC\{msvcv}\lib\{target};"
+        rf"%~dp0Windows Kits\10\Lib\{sdkv}\ucrt\{target};"
+        rf"%~dp0Windows Kits\10\Lib\{sdkv}\um\{target}"
+    )
     SETUP = rf"""@echo off
 
 set "VSCMD_ARG_HOST_ARCH={host}"
@@ -533,9 +641,9 @@ set "UCRTVersion={sdkv}"
 set "VCToolsInstallDir=%~dp0VC\Tools\MSVC\{msvcv}\"
 set "WindowsSdkBinPath=%~dp0Windows Kits\10\bin\"
 
-set "PATH=%~dp0VC\Tools\MSVC\{msvcv}\bin\Host{host}\{target};%~dp0Windows Kits\10\bin\{sdkv}\{host};%~dp0Windows Kits\10\bin\{sdkv}\{host}\ucrt;%~dp0CMake\bin;%~dp0Ninja;%PATH%"
-set "INCLUDE=%~dp0VC\Tools\MSVC\{msvcv}\include;%~dp0Windows Kits\10\Include\{sdkv}\ucrt;%~dp0Windows Kits\10\Include\{sdkv}\shared;%~dp0Windows Kits\10\Include\{sdkv}\um;%~dp0Windows Kits\10\Include\{sdkv}\winrt;%~dp0Windows Kits\10\Include\{sdkv}\cppwinrt"
-set "LIB=%~dp0VC\Tools\MSVC\{msvcv}\lib\{target};%~dp0Windows Kits\10\Lib\{sdkv}\ucrt\{target};%~dp0Windows Kits\10\Lib\{sdkv}\um\{target}"
+set "PATH={path_value}"
+set "INCLUDE={include_value}"
+set "LIB={lib_value}"
 """
     (OUTPUT / f"setup_{target}.bat").write_text(SETUP)
 

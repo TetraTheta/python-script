@@ -1,8 +1,10 @@
+from __future__ import annotations
+
 import os
 import platform
 import shutil
 import sys
-from argparse import ArgumentParser, RawTextHelpFormatter
+from argparse import ArgumentParser, Namespace, RawTextHelpFormatter
 from pathlib import Path
 
 
@@ -15,12 +17,12 @@ class Color:
 
 
 class CustomFormatter(RawTextHelpFormatter):
-    def __init__(self, prog):
+    def __init__(self, prog: str) -> None:
         width = max(80, shutil.get_terminal_size().columns - 2)
         super().__init__(prog, width=width)
 
 
-class RemoveEmptyDirectoryNamespace:
+class RemoveEmptyDirectoryNamespace(Namespace):
     target: str | Path = Path.cwd()
     yes: bool = False
 
@@ -37,7 +39,7 @@ def get_exclusion_paths() -> list[Path]:
     return [Path(os.path.expandvars(p)).resolve() for p in raw_exclusion]
 
 
-def remove_empty_directory(current: Path, root: Path, exclusion: list[Path]):
+def remove_empty_directory(current: Path, root: Path, exclusion: list[Path]) -> None:
     if not current.is_dir():
         return
 
@@ -64,7 +66,8 @@ def remove_empty_directory(current: Path, root: Path, exclusion: list[Path]):
             try:
                 current.rmdir()
                 print(
-                    f"{Color.YELLOW}[REMOVE ]{Color.RESET} {current.parent}{os.sep}{Color.YELLOW}{current.name}{Color.RESET}"
+                    f"{Color.YELLOW}[REMOVE ]{Color.RESET} "
+                    f"{current.parent}{os.sep}{Color.YELLOW}{current.name}{Color.RESET}"
                 )
             except OSError:
                 pass
@@ -75,11 +78,8 @@ def remove_empty_directory(current: Path, root: Path, exclusion: list[Path]):
         pass
 
 
-##########
-#  MAIN  #
-##########
-def main():
-    # This script requires > 3.12 (Path.is_junction())
+def main() -> None:
+    # Path.is_junction() is available on Python 3.12 and newer.
     if sys.version_info < (3, 12):
         print(f"{Color.RED}[ ERROR ]{Color.RESET} This script requires Python version above 3.12")
         sys.exit(1)
@@ -89,12 +89,20 @@ def main():
         description="Remove empty directories from given path",
         formatter_class=CustomFormatter,
     )
-    cli.add_argument("-y", "--yes", action="store_true", help="Skip confirmation prompt\n(default: False)")
     cli.add_argument(
-        "target", default=str(Path.cwd()), nargs="?", help=f"Target directory\n(default: {Path.cwd()})"
-    )  # I can't use 'type=Path' because it can't handle '.' being passed to it
+        "-y",
+        "--yes",
+        action="store_true",
+        help="Skip confirmation prompt\n(default: False)",
+    )
+    cli.add_argument(
+        "target",
+        default=str(Path.cwd()),
+        nargs="?",
+        help=f"Target directory\n(default: {Path.cwd()})",
+    )
 
-    args = cli.parse_args(namespace=RemoveEmptyDirectoryNamespace)
+    args = cli.parse_args(namespace=RemoveEmptyDirectoryNamespace())
     target = Path(args.target).resolve()
 
     if not target.is_dir():

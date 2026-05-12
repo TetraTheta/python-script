@@ -1,6 +1,8 @@
+from __future__ import annotations
+
 import sys
 from pathlib import Path
-from subprocess import run
+from subprocess import CalledProcessError, run
 
 
 class Color:
@@ -14,34 +16,38 @@ class Color:
 EXTS = (".bmp", ".jpg", ".jpeg", ".png", ".webp")
 
 
-def convert(image_path: Path, output_dir: Path):
+def convert(image_path: Path, output_dir: Path) -> None:
     print(f"{Color.GREEN}[INFO]{Color.RESET} Converting '{image_path}'")
     output_path = output_dir / f"{image_path.stem}.png"
     output_dir.mkdir(parents=True, exist_ok=True)
-    run(
-        [
-            "ffmpeg",
-            "-hide_banner",
-            "-loglevel",
-            "error",
-            "-i",
-            str(image_path),
-            "-vf",
-            "crop='if(gt(iw,ih),ih,iw):if(gt(iw,ih),ih,iw)',scale=512:512",
-            "-y",
-            str(output_path),
-        ]
-    )
+    try:
+        run(
+            [
+                "ffmpeg",
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-i",
+                str(image_path),
+                "-vf",
+                "crop='if(gt(iw,ih),ih,iw):if(gt(iw,ih),ih,iw)',scale=512:512",
+                "-y",
+                str(output_path),
+            ],
+            check=True,
+        )
+    except (FileNotFoundError, CalledProcessError) as error:
+        print(
+            f"{Color.RED}[ERROR]{Color.RESET} Failed to convert '{image_path}': {error}",
+            file=sys.stderr,
+        )
 
 
 def is_image(file: Path) -> bool:
     return file.is_file() and file.suffix.lower() in EXTS
 
 
-##########
-#  MAIN  #
-##########
-def main():
+def main() -> None:
     target = Path(sys.argv[1]) if len(sys.argv) > 1 else Path.cwd()
 
     if target.is_dir():
@@ -51,6 +57,9 @@ def main():
                 convert(file_path, output_dir)
     elif is_image(target):
         convert(target, target.parent / "thumb")
+    else:
+        print(f"{Color.RED}[ERROR]{Color.RESET} No image file was found.", file=sys.stderr)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

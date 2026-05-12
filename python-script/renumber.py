@@ -1,6 +1,8 @@
+from __future__ import annotations
+
 import shutil
 import sys
-from argparse import ArgumentParser, ArgumentTypeError, RawTextHelpFormatter
+from argparse import ArgumentParser, ArgumentTypeError, Namespace, RawTextHelpFormatter
 from pathlib import Path
 from re import compile, split
 
@@ -14,12 +16,12 @@ class Color:
 
 
 class CustomFormatter(RawTextHelpFormatter):
-    def __init__(self, prog):
+    def __init__(self, prog: str) -> None:
         width = max(80, shutil.get_terminal_size().columns - 2)
         super().__init__(prog, width=width)
 
 
-class RenumberNamespace:
+class RenumberNamespace(Namespace):
     digit: int
     ext: str
     start: int
@@ -27,7 +29,7 @@ class RenumberNamespace:
     yes: bool
 
 
-def check_int(value, *, positive=False, non_negative=False) -> int:
+def check_int(value: str, *, positive: bool = False, non_negative: bool = False) -> int:
     try:
         number = int(value)
         if positive and number <= 0:
@@ -35,40 +37,40 @@ def check_int(value, *, positive=False, non_negative=False) -> int:
         if non_negative and number < 0:
             raise ArgumentTypeError(f"{number} must be non-negative ({number} >= 0)")
         return number
-    except ValueError:
-        raise ArgumentTypeError(f"{value} is not a valid integer")
+    except ValueError as error:
+        raise ArgumentTypeError(f"{value} is not a valid integer") from error
 
 
 def natural_sort(lst: list[Path]) -> list[Path]:
     regex = compile(r"(\d+)")
-    return sorted(lst, key=lambda p: [int(s) if s.isdigit() else s.lower() for s in split(regex, str(p))])
+    return sorted(
+        lst,
+        key=lambda p: [int(s) if s.isdigit() else s.lower() for s in split(regex, str(p))],
+    )
 
 
-def renumber(dir: Path, ext: str, digit: int, start: int):
+def renumber(directory: Path, ext: str, digit: int, start: int) -> None:
     exts = [f".{e.strip().lower()}" for e in ext.split(",")]
-    files = natural_sort([f for f in dir.iterdir() if f.suffix.lower() in exts and f.is_file()])
+    files = natural_sort([file for file in directory.iterdir() if file.suffix.lower() in exts and file.is_file()])
 
     if not files:
-        print(f"{Color.RED}[ERROR ]{Color.RESET} No files with extension(s) {exts} in '{dir}'.")
+        print(f"{Color.RED}[ERROR ]{Color.RESET} No files with extension(s) {exts} in '{directory}'.")
         return
 
     temp_files: list[tuple[str, Path]] = []
     for file in files:
-        temp_path = dir / f"rntmp-{file.name}"
+        temp_path = directory / f"rntmp-{file.name}"
         file.rename(temp_path)
         temp_files.append((file.name, temp_path))
-    for i, (original, temp_path) in enumerate(temp_files, start=start):
-        new_name = f"{str(i).zfill(digit)}{temp_path.suffix.lower()}"
-        temp_path.rename(dir / new_name)
+    for index, (original, temp_path) in enumerate(temp_files, start=start):
+        new_name = f"{str(index).zfill(digit)}{temp_path.suffix.lower()}"
+        temp_path.rename(directory / new_name)
         print(f"{Color.YELLOW}[RENAME]{Color.RESET} {original} → {new_name}")
 
     print(f"{Color.GREEN}[ INFO ]{Color.RESET} Renumber complete.")
 
 
-##########
-#  MAIN  #
-##########
-def main():
+def main() -> None:
     cli = ArgumentParser(
         prog="renumber",
         description="Rename image files in a directory with sequential numbering.",
@@ -96,10 +98,20 @@ def main():
         default=3,
         help="Number of digits in renamed files\n(default: 3)",
     )
-    cli.add_argument("-y", "--yes", action="store_true", help="Skip confirmation prompt\n(default: False)")
-    cli.add_argument("target", default=str(Path.cwd()), nargs="?", help=f"Target directory\n(default: {Path.cwd()})")
+    cli.add_argument(
+        "-y",
+        "--yes",
+        action="store_true",
+        help="Skip confirmation prompt\n(default: False)",
+    )
+    cli.add_argument(
+        "target",
+        default=str(Path.cwd()),
+        nargs="?",
+        help=f"Target directory\n(default: {Path.cwd()})",
+    )
 
-    args = cli.parse_args(namespace=RenumberNamespace)
+    args = cli.parse_args(namespace=RenumberNamespace())
     args.target = Path(args.target).resolve()
 
     if not args.target.is_dir():

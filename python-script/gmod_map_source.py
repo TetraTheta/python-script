@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import sys
 from pathlib import Path
 
@@ -10,24 +12,25 @@ class Color:
     YELLOW = "\033[1;33m"
 
 
-class vstr(str):
-    def replace_input(self, old: str, new: str) -> "vstr":
-        return vstr(self.replace(f'"{old}"', f'"{new}"'))
+class VmfText(str):
+    def replace_input(self, old: str, new: str) -> VmfText:
+        return VmfText(self.replace(f'"{old}"', f'"{new}"'))
 
-    def replace_output(self, old: str, new: str) -> "vstr":
-        return vstr(self.replace(f"{chr(27)}{old}{chr(27)}", f"{chr(27)}{new}{chr(27)}"))
+    def replace_output(self, old: str, new: str) -> VmfText:
+        return VmfText(self.replace(f"{chr(27)}{old}{chr(27)}", f"{chr(27)}{new}{chr(27)}"))
 
 
-def replace(target: Path):
+def replace(target: Path) -> None:
     if target.suffix != ".vmf":
-        print(f"{Color.RED}[ERROR]{Color.RESET} '{target.name}' is not a VMF file", file=sys.stderr)
+        print(
+            f"{Color.RED}[ERROR]{Color.RESET} '{target.name}' is not a VMF file",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
     try:
-        content: vstr = vstr(target.read_text().lower())
-        #######################
-        #    Generic Input    #
-        #######################
+        content = VmfText(target.read_text().lower())
+        # Generic Input
         content = content.replace_input("onallspawneddead", "OnAllSpawnedDead")
         content = content.replace_input("onarrival", "OnArrival")
         content = content.replace_input("onawakened", "OnAwakened")
@@ -103,9 +106,7 @@ def replace(target: Path):
         content = content.replace_input("onuser3", "OnUser3")
         content = content.replace_input("onuser4", "OnUser4")
 
-        ########################
-        #    Generic Output    #
-        ########################
+        # Generic Output
         content = content.replace_output("activate", "Activate")
         content = content.replace_output("add", "Add")
         content = content.replace_output("addcontext", "AddContext")
@@ -207,22 +208,16 @@ def replace(target: Path):
         content = content.replace_output("unlock", "Unlock")
         content = content.replace_output("wake", "Wake")
 
-        #######################
-        #    Custom Entity    #
-        #######################
+        # Custom Entity
         # Get A Life - env_textgal
         content = content.replace_input("env_textgal", "game_text")
         content = content.replace_output("displaytext", "Display")
-        #
         target.write_text(content)
-    except Exception as e:
-        print(f"{Color.RED}[ERROR]{Color.RESET} Failed to process '{target}': {e}")
+    except OSError as error:
+        print(f"{Color.RED}[ERROR]{Color.RESET} Failed to process '{target}': {error}")
 
 
-##########
-#  MAIN  #
-##########
-def main():
+def main() -> None:
     target = Path(sys.argv[1]) if len(sys.argv) > 1 else Path.cwd()
 
     if target.is_file() and target.suffix == ".vmf":
@@ -233,7 +228,10 @@ def main():
             print(f"{Color.GREEN}[INFO ]{Color.RESET} Processing '{src.name}'")
             replace(src)
     else:
-        print(f"{Color.RED}[ERROR]{Color.RESET} There is no file to process", file=sys.stderr)
+        print(
+            f"{Color.RED}[ERROR]{Color.RESET} There is no file to process",
+            file=sys.stderr,
+        )
 
 
 if __name__ == "__main__":

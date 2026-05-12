@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import os
 import platform
 import re
@@ -6,6 +8,7 @@ import sys
 from fnmatch import fnmatch
 from pathlib import Path
 from shutil import move, rmtree
+from typing import Callable
 
 
 class Color:
@@ -16,30 +19,32 @@ class Color:
     YELLOW = "\033[1;33m"
 
 
-def lowercase_names(dir: Path):
-    items = sorted(dir.rglob("*"), key=lambda p: len(p.parts), reverse=True)
+def lowercase_names(directory: Path) -> None:
+    items = sorted(directory.rglob("*"), key=lambda path: len(path.parts), reverse=True)
 
     for item in items:
         new_name = item.name.lower()
         if item.name != new_name:
             new_path = item.with_name(new_name)
             print(
-                f"{Color.YELLOW}[RENAME ]{Color.RESET} {item.parent}{os.sep}{{{Color.YELLOW}{item.name}{Color.RESET} → {Color.YELLOW}{new_name}{Color.RESET}}}"
+                f"{Color.YELLOW}[RENAME ]{Color.RESET} "
+                f"{item.parent}{os.sep}{{{Color.YELLOW}{item.name}{Color.RESET} → "
+                f"{Color.YELLOW}{new_name}{Color.RESET}}}"
             )
             try:
                 make_writable(item)
                 item.rename(new_path)
-            except OSError as e:
-                print(f"{Color.RED}[ ERROR ]{Color.RESET} Failed to rename '{item}': {e}")
+            except OSError as error:
+                print(f"{Color.RED}[ ERROR ]{Color.RESET} Failed to rename '{item}': {error}")
 
 
-def make_writable(path: Path):
+def make_writable(path: Path) -> None:
     if path.exists():
         mode = os.stat(path).st_mode
         os.chmod(path, mode | stat.S_IWRITE)
 
 
-def remove_dirs(target: Path, names: list[str]):
+def remove_dirs(target: Path, names: list[str]) -> None:
     for name in names:
         path = target.joinpath(*Path(name).parts).resolve()
         if path.exists() and path.is_dir():
@@ -47,12 +52,16 @@ def remove_dirs(target: Path, names: list[str]):
             rmtree(path, onerror=remove_readonly)
 
 
-def remove_readonly(func, path, excinfo):
+def remove_readonly(
+    func: Callable[[str], object],
+    path: str,
+    excinfo: tuple[type[BaseException], BaseException, object],
+) -> None:
     os.chmod(path, stat.S_IWRITE)
     func(path)
 
 
-def remove_empty_directory(current: Path, root: Path):
+def remove_empty_directory(current: Path, root: Path) -> None:
     if not current.is_dir():
         return
 
@@ -72,7 +81,8 @@ def remove_empty_directory(current: Path, root: Path):
             try:
                 current.rmdir()
                 print(
-                    f"{Color.YELLOW}[REMOVE ]{Color.RESET} {current.parent}{os.sep}{Color.YELLOW}{current.name}{Color.RESET}"
+                    f"{Color.YELLOW}[REMOVE ]{Color.RESET} "
+                    f"{current.parent}{os.sep}{Color.YELLOW}{current.name}{Color.RESET}"
                 )
             except OSError:
                 pass
@@ -83,7 +93,7 @@ def remove_empty_directory(current: Path, root: Path):
         pass
 
 
-def remove_files_by_patterns(target: Path, patterns: list[str]):
+def remove_files_by_patterns(target: Path, patterns: list[str]) -> None:
     for pattern in patterns:
         for path in target.rglob(pattern):
             if path.is_file():
@@ -91,11 +101,11 @@ def remove_files_by_patterns(target: Path, patterns: list[str]):
                 try:
                     make_writable(path)
                     path.unlink()
-                except Exception as e:
-                    print(f"{Color.RED}[ ERROR ]{Color.RESET} Failed to delete '{path}': {e}")
+                except OSError as error:
+                    print(f"{Color.RED}[ ERROR ]{Color.RESET} Failed to delete '{path}': {error}")
 
 
-def remove_files_by_exception(target: Path, exceptions: list[str]):
+def remove_files_by_exception(target: Path, exceptions: list[str]) -> None:
     for path in target.rglob("*"):
         if path.is_file():
             name = path.name.lower()
@@ -109,11 +119,11 @@ def remove_files_by_exception(target: Path, exceptions: list[str]):
                 try:
                     make_writable(path)
                     path.unlink()
-                except Exception as e:
-                    print(f"{Color.RED}[ ERROR ]{Color.RESET} Failed to delete '{path}': {e}")
+                except OSError as error:
+                    print(f"{Color.RED}[ ERROR ]{Color.RESET} Failed to delete '{path}': {error}")
 
 
-def replace_material_shader(materials_dir: Path):
+def replace_material_shader(materials_dir: Path) -> None:
     for vmt in materials_dir.rglob("*.vmt"):
         try:
             make_writable(vmt)
@@ -122,8 +132,8 @@ def replace_material_shader(materials_dir: Path):
             content = content.replace('"SDK_Sprite"', '"Sprite"')
             content = content.replace('"SDK_VertexLitGeneric"', '"VertexLitGeneric"')
             vmt.write_text(content)
-        except Exception as e:
-            print(f"{Color.RED}[ ERROR ]{Color.RESET} Failed to process '{vmt}': {e}")
+        except OSError as error:
+            print(f"{Color.RED}[ ERROR ]{Color.RESET} Failed to process '{vmt}': {error}")
 
 
 def sanitize_name(name: str) -> str:
@@ -132,10 +142,7 @@ def sanitize_name(name: str) -> str:
     return name.strip("_").lower()
 
 
-##########
-#  MAIN  #
-##########
-def main():
+def main() -> None:
     target = Path(sys.argv[1]) if len(sys.argv) > 1 else Path.cwd()
 
     # Check 'maps' dir or BSP file
@@ -213,7 +220,18 @@ def main():
     # Remove files
     print(f"{Color.GREEN}[ INFO  ]{Color.RESET} Remove files")
     remove_files_by_patterns(
-        target, ["*.bak", "*.cache", "*.db", "*.image", "*.raw", "*.tga", "*.sw.vtx", "*.xbox.vtx", "desktop.ini"]
+        target,
+        [
+            "*.bak",
+            "*.cache",
+            "*.db",
+            "*.image",
+            "*.raw",
+            "*.tga",
+            "*.sw.vtx",
+            "*.xbox.vtx",
+            "desktop.ini",
+        ],
     )
 
     # Remove files in 'materials' dir
@@ -255,19 +273,19 @@ def main():
 
     gamemode_txt = gamemodes_dir / safe_name / f"{safe_name}.txt"
     gamemode_txt.parent.mkdir(parents=True, exist_ok=True)
-    gamemode_txt_content = f'''"{safe_name}"
+    gamemode_txt_content = f""""{safe_name}"
 {{
   "title" "{dir_name}"
   "maps" "{maps_str}"
   "menusystem" "0"
   "source" ""
 }}
-'''
+"""
     gamemode_txt.write_text(gamemode_txt_content)
 
     # Create 'addon.json' file
     print(f"{Color.GREEN}[ INFO  ]{Color.RESET} Creating 'addon.json' file")
-    addon_json_content = f'''{{
+    addon_json_content = f"""{{
   "title": "{dir_name}",
   "type": "map",
   "tags": [
@@ -283,7 +301,7 @@ def main():
     "modelsrc/*",
   ]
 }}
-'''
+"""
     (target / "addon.json").write_text(addon_json_content)
 
     # Remove empty directories

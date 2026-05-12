@@ -1,7 +1,9 @@
+from __future__ import annotations
+
 import os
 import shutil
 import sys
-from argparse import ArgumentParser, RawTextHelpFormatter
+from argparse import ArgumentParser, Namespace, RawTextHelpFormatter
 from pathlib import Path
 
 
@@ -14,45 +16,52 @@ class Color:
 
 
 class CustomFormatter(RawTextHelpFormatter):
-    def __init__(self, prog):
+    def __init__(self, prog: str) -> None:
         width = max(80, shutil.get_terminal_size().columns - 2)
         super().__init__(prog, width=width)
 
 
-class LowercaseNamespace:
+class LowercaseNamespace(Namespace):
     target: str | Path
     yes: bool
 
 
-def lowercase_names(dir: Path):
-    items = sorted(dir.rglob("*"), key=lambda p: len(p.parts), reverse=True)
+def lowercase_names(directory: Path) -> None:
+    items = sorted(directory.rglob("*"), key=lambda path: len(path.parts), reverse=True)
 
     for item in items:
         new_name = item.name.lower()
         if item.name != new_name:
             new_path = item.with_name(new_name)
             print(
-                f"{Color.YELLOW}[RENAME]{Color.RESET} {item.parent}{os.sep}{{{Color.YELLOW}{item.name}{Color.RESET} → {Color.YELLOW}{new_name}{Color.RESET}}}"
+                f"{Color.YELLOW}[RENAME]{Color.RESET} "
+                f"{item.parent}{os.sep}{{{Color.YELLOW}{item.name}{Color.RESET} → "
+                f"{Color.YELLOW}{new_name}{Color.RESET}}}"
             )
             try:
                 item.rename(new_path)
-            except OSError as e:
-                print(f"{Color.RED}[ERROR ]{Color.RESET} Failed to rename '{item}': {e}")
+            except OSError as error:
+                print(f"{Color.RED}[ERROR ]{Color.RESET} Failed to rename '{item}': {error}")
 
 
-##########
-#  MAIN  #
-##########
-def main():
+def main() -> None:
     cli = ArgumentParser(
         prog="lowercase",
         description="Convert uppercase characters to lowercase in file and directory names.",
         formatter_class=CustomFormatter,
     )
-    cli.add_argument("-y", "--yes", action="store_true", help="Skip confirmation prompt\n(default: False)")
     cli.add_argument(
-        "target", default=str(Path.cwd()), nargs="?", help=f"Target directory\n(default: {Path.cwd()})"
-    )  # I can't use 'type=Path' because it can't handle '.' being passed to it
+        "-y",
+        "--yes",
+        action="store_true",
+        help="Skip confirmation prompt\n(default: False)",
+    )
+    cli.add_argument(
+        "target",
+        default=str(Path.cwd()),
+        nargs="?",
+        help=f"Target directory\n(default: {Path.cwd()})",
+    )
 
     args = cli.parse_args(namespace=LowercaseNamespace())
     target = Path(args.target).resolve()

@@ -1,56 +1,61 @@
 import argparse
 import re
 import sys
+from argparse import Namespace
 from pathlib import Path
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 from urllib.request import urlopen
 
 
+class YoutubeThumbnailNamespace(Namespace):
+    input: str
+
+
 def get_youtube_id(url: str) -> str:
-    # YouTube video ID only
+    # Plain video IDs can be used directly.
     if re.fullmatch(r"[a-zA-Z0-9_-]{11}", url):
         return url
 
     try:
-        # normalize url
-        url = re.sub(r"(attribution_link|uploademail|youtube-nocookie)", "x", url, flags=re.IGNORECASE)
+        url = re.sub(
+            r"(attribution_link|uploademail|youtube-nocookie)",
+            "x",
+            url,
+            flags=re.IGNORECASE,
+        )
         parsed = urlparse(url)
 
-        # check embed case (?=url=...)
+        # Some shared URLs nest the real video URL in a query parameter.
         query = parse_qs(parsed.query)
         embed = query.get("url")
         if embed:
             parsed = urlparse(embed[0])
             query = parse_qs(parsed.query)
 
-        # standard ?v= parameter
         v = query.get("v")
         if v:
             return v[0]
 
-        # remove unwanted parameters
         del_params = ["a", "app", "list", "feature", "rel", "si"]
         filtered_query = {k: v for k, v in query.items() if k not in del_params}
         rebuilt_url = urlunparse(parsed._replace(query=urlencode(filtered_query, doseq=True)))
 
-        # replace encoded '='
         rebuilt_url = rebuilt_url.replace("%3D", "=")
 
-        # find first 11-char ID
         match = re.search(r"[a-zA-Z0-9_-]{11}", rebuilt_url)
         if match:
             return match.group(0)
 
         return ""
-    except Exception:
+    except ValueError:
         return ""
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(description="Download YouTube max resolution thumbnail image.")
     parser.add_argument("input", help="YouTube URL or YouTube Video ID")
 
-    args = parser.parse_args()
+    args = parser.parse_args(namespace=YoutubeThumbnailNamespace())
 
     video_id = get_youtube_id(args.input)
 
@@ -64,13 +69,13 @@ def main():
     try:
         with urlopen(url) as response:
             if response.status != 200:
-                print(f"Thumbnail not avilable (HTTP {response.status})", file=sys.stderr)
+                print(f"Thumbnail not available (HTTP {response.status})", file=sys.stderr)
                 sys.exit(1)
             data = response.read()
             output_path.write_bytes(data)
         print(f"Downloaded: {output_path}")
-    except Exception as e:
-        print(f"Download failed: {e}", file=sys.stderr)
+    except OSError as error:
+        print(f"Download failed: {error}", file=sys.stderr)
         sys.exit(1)
 
 

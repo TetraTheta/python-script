@@ -1,10 +1,12 @@
+from __future__ import annotations
+
 import base64
 import platform
 import shutil
-from argparse import ArgumentParser, RawTextHelpFormatter
+import sys
+from argparse import ArgumentParser, Namespace, RawTextHelpFormatter
 from pathlib import Path
 from subprocess import CalledProcessError, run
-from sys import exit, stderr
 
 
 class Color:
@@ -16,34 +18,38 @@ class Color:
 
 
 class CustomFormatter(RawTextHelpFormatter):
-    def __init__(self, prog):
+    def __init__(self, prog: str) -> None:
         super().__init__(prog, width=max(80, shutil.get_terminal_size().columns - 2))
 
 
-class Base64Namespace:
+class Base64Namespace(Namespace):
     command: str
     input: str
 
 
-def copy_to_clipboard(content: str):
-    # tkinter can't set clipboard content
+def copy_to_clipboard(content: str) -> None:
+    # tkinter is intentionally avoided because it cannot reliably set clipboard text.
     opsys = platform.system()
-    command = {"Windows": ["clip"], "Linux": ["xclip", "-selection", "clipboard"], "Darwin": ["pbcopy"]}.get(opsys)
+    command = {
+        "Windows": ["clip"],
+        "Linux": ["xclip", "-selection", "clipboard"],
+        "Darwin": ["pbcopy"],
+    }.get(opsys)
 
     if not command:
-        print(f"{Color.RED}[ERROR]{Color.RESET} Unsupported OS: {opsys}", file=stderr)
+        print(f"{Color.RED}[ERROR]{Color.RESET} Unsupported OS: {opsys}", file=sys.stderr)
         return
 
     try:
         run(command, input=content.encode(), check=True)
-        print(f"{Color.GREEN}[INFO ]{Color.RESET} Copied to clipboard using '{' '.join(command)}'", file=stderr)
+        print(f"{Color.GREEN}[INFO ]{Color.RESET} Copied to clipboard using '{' '.join(command)}'", file=sys.stderr)
     except FileNotFoundError:
-        print(f"{Color.RED}[ERROR]{Color.RESET} Clipboard utility not found: {command[0]}", file=stderr)
-    except CalledProcessError as e:
-        print(f"{Color.RED}[ERROR]{Color.RESET} Clipboard command failed: {e}", file=stderr)
+        print(f"{Color.RED}[ERROR]{Color.RESET} Clipboard utility not found: {command[0]}", file=sys.stderr)
+    except CalledProcessError as error:
+        print(f"{Color.RED}[ERROR]{Color.RESET} Clipboard command failed: {error}", file=sys.stderr)
 
 
-def encode_input(input_value: str):
+def encode_input(input_value: str) -> None:
     input_path = Path(input_value)
 
     try:
@@ -52,20 +58,20 @@ def encode_input(input_value: str):
         else:
             content = input_value.encode()
         encoded = base64.b64encode(content).decode()
-    except Exception as e:
-        print(f"{Color.RED}[ERROR]{Color.RESET} Failed to encode: {e}", file=stderr)
-        exit(1)
+    except OSError as error:
+        print(f"{Color.RED}[ERROR]{Color.RESET} Failed to encode: {error}", file=sys.stderr)
+        sys.exit(1)
 
     print(encoded)
     copy_to_clipboard(encoded)
 
 
-def decode_input(input_value: str):
+def decode_input(input_value: str) -> None:
     try:
-        decoded = base64.b64decode(input_value)
-    except Exception as e:
-        print(f"{Color.RED}[ERROR]{Color.RESET} Could not decode: {e}", file=stderr)
-        exit(1)
+        decoded = base64.b64decode(input_value, validate=True)
+    except ValueError as error:
+        print(f"{Color.RED}[ERROR]{Color.RESET} Could not decode: {error}", file=sys.stderr)
+        sys.exit(1)
 
     try:
         text = decoded.decode()
@@ -75,22 +81,19 @@ def decode_input(input_value: str):
         filename = "base64_decoded"
         try:
             Path(filename).write_bytes(decoded)
-            print(f"{Color.GREEN}[INFO ]{Color.RESET} Binary file written to './{filename}'", file=stderr)
+            print(f"{Color.GREEN}[INFO ]{Color.RESET} Binary file written to './{filename}'", file=sys.stderr)
             return
-        except Exception:
+        except OSError:
             fallback_path = Path.home() / filename
             try:
                 fallback_path.write_bytes(decoded)
-                print(f"{Color.GREEN}[INFO ]{Color.RESET} Binary file written to '{fallback_path}'", file=stderr)
-            except Exception as e:
-                print(f"{Color.RED}[ERROR]{Color.RESET} Failed to write decoded data: {e}", file=stderr)
-                exit(1)
+                print(f"{Color.GREEN}[INFO ]{Color.RESET} Binary file written to '{fallback_path}'", file=sys.stderr)
+            except OSError as error:
+                print(f"{Color.RED}[ERROR]{Color.RESET} Failed to write decoded data: {error}", file=sys.stderr)
+                sys.exit(1)
 
 
-##########
-#  MAIN  #
-##########
-def main():
+def main() -> None:
     cli = ArgumentParser(prog="base64", description="Encode or Decode BASE64 string", formatter_class=CustomFormatter)
     cli.add_argument("command", choices=["e", "encode", "d", "decode"], help="(E)ncode or (D)ecode")
     cli.add_argument("input", help="String or File path")

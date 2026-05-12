@@ -15,7 +15,7 @@ class KeyValueParseError(ValueError):
 
 
 class ValveKeyValue:
-    def __init__(self, items: list[KeyValueItem]):
+    def __init__(self, items: list[KeyValueItem]) -> None:
         self.items = items
 
     @classmethod
@@ -58,7 +58,7 @@ class ValveKeyValue:
 
 
 class KeyValueParser:
-    def __init__(self, text: str, allow_unclosed_blocks: bool = True):
+    def __init__(self, text: str, allow_unclosed_blocks: bool = True) -> None:
         self.text = text
         self.length = len(text)
         self.index = 0

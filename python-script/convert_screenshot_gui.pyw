@@ -77,7 +77,7 @@ class ConvertScreenshotGUI:
         self.textLog.pack(expand=True, fill="both", padx=8, pady=(0, 8), side="top")
 
         self.root.after(100, self.process_queue)
-        #t = threading.Thread(target=self.run_job, daemon=True)
+        # t = threading.Thread(target=self.run_job, daemon=True)
         t = threading.Thread(target=self.run_job)
         t.start()
 
@@ -276,7 +276,9 @@ class ConvertScreenshotGUI:
         if should_blur(actual_w, actual_h):
             for i, (x, y, w, h) in enumerate(self.job["blur"]):
                 parts.append(f"{last}split=2[base{i}][tmp{i}]")
-                parts.append(f"[tmp{i}]crop={w}:{h}:{x}:{y},boxblur=min(w\,h)/2:5:min(cw\,ch)/2:5:min(w\,h)/2:5[blur{i}]") # pyright: ignore[reportInvalidStringEscapeSequence]
+                parts.append(
+                    f"[tmp{i}]crop={w}:{h}:{x}:{y},boxblur=min(w\,h)/2:5:min(cw\,ch)/2:5:min(w\,h)/2:5[blur{i}]"  # pyright: ignore[reportInvalidStringEscapeSequence]
+                )
                 parts.append(f"[base{i}][blur{i}]overlay={x}:{y}[out{i}]")
                 last = f"[out{i}]"
 

@@ -1,13 +1,47 @@
+from __future__ import annotations
+
 import argparse
 import json
 import subprocess
 import sys
 import tempfile
 import uuid
+from collections.abc import Sequence
 from pathlib import Path
-from typing import List, Literal, Optional
+from typing import Literal, TypedDict
 
-CONFIG = {
+CropPosition = Literal["bottom", "center", "full"]
+GameName = Literal["none", "wuwa", "endfield"]
+OperationName = Literal[
+    "background",
+    "center",
+    "cutscene",
+    "foreground0",
+    "foreground1",
+    "foreground2",
+    "foreground3",
+    "foreground4",
+    "foreground5",
+    "full",
+]
+
+
+class PresetConfig(TypedDict):
+    crop_height: int
+    crop_position: CropPosition
+    blur: list[list[int]]
+
+
+class GeneralConfig(TypedDict):
+    folder_name: dict[OperationName, str]
+
+
+class AppConfig(TypedDict):
+    game: dict[Literal["wuwa", "endfield"], dict[OperationName, PresetConfig]]
+    general: GeneralConfig
+
+
+CONFIG: AppConfig = {
     "game": {
         "wuwa": {
             "background": {
@@ -131,7 +165,7 @@ CONFIG = {
     },
 }
 
-ALL_OPERATION = [
+ALL_OPERATION: list[OperationName] = [
     "background",
     "center",
     "cutscene",
@@ -146,13 +180,8 @@ ALL_OPERATION = [
 
 IMAGE_EXTS = (".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tiff")
 
-################################################################################
-# Helper
-################################################################################
-
 
 def has_images(path: Path) -> bool:
-    # double check for directory
     if not path.is_dir():
         return False
     try:
@@ -170,63 +199,101 @@ def ensure_temp_dir() -> Path:
     return base
 
 
-def write_job_json(job: dict) -> Path:
+def write_job_json(job: JobPayload) -> Path:
     temp_dir = ensure_temp_dir()
     name = f"cs-{uuid.uuid4().hex}.json"
     path = temp_dir / name
-    with path.open("w", encoding="utf-8") as f:
-        json.dump(job, f, indent=2)
+    with path.open("w", encoding="utf-8") as file:
+        json.dump(job, file, indent=2)
     return path
 
 
-def spawn_gui(json_path: Path):
+def spawn_gui(json_path: Path) -> None:
     gui_script = Path(__file__).with_name("convert_screenshot_gui.pyw")
-    kwargs = {}
+    command = [sys.executable, str(gui_script), str(json_path)]
     if sys.platform == "win32":
-        kwargs["creationflags"] = subprocess.DETACHED_PROCESS
-    subprocess.Popen([sys.executable, str(gui_script), str(json_path)], **kwargs)
+        subprocess.Popen(command, creationflags=subprocess.DETACHED_PROCESS)
+        return
+    subprocess.Popen(command)
 
 
-def create_directories(target: Path):
+def create_directories(target: Path) -> None:
     for _, name in CONFIG["general"]["folder_name"].items():
         out = target / name
         out.mkdir(parents=True, exist_ok=True)
 
 
-def parse_blur(s: str):
-    parts = s.split(",")
+def parse_blur(value: str) -> list[int]:
+    parts = value.split(",")
     if len(parts) != 4:
         raise argparse.ArgumentTypeError("blur must be in form of 'x,y,w,h'")
-    return [int(p) for p in parts]
-
-
-################################################################################
-# Helper
-################################################################################
+    try:
+        return [int(part) for part in parts]
+    except ValueError as error:
+        raise argparse.ArgumentTypeError("blur values must be integers") from error
 
 
 class ConvertScreenshotNamespace(argparse.Namespace):
     target: Path
-    game: Literal["none", "wuwa", "endfield"]
+    game: GameName
     operation: str
-    blur: Optional[List[List[int]]]
-    crop_height: Optional[int]
-    crop_pos: Optional[Literal["bottom", "center", "full"]]
-    width_from: Optional[int]
-    width_to: Optional[int]
+    blur: list[list[int]] | None
+    crop_height: int | None
+    crop_pos: CropPosition | None
+    width_from: int | None
+    width_to: int | None
 
 
-def main():
+class JobPayload(TypedDict):
+    operation: str
+    game: GameName
+    blur: list[list[int]]
+    crop_height: int
+    crop_pos: CropPosition
+    save_at_parent: bool
+    target: str
+    width_from: int
+    width_to: int
+    delete_job_file: bool
+
+
+def get_operation_list(operation: str) -> Sequence[OperationName | str]:
+    if operation == "all":
+        return ALL_OPERATION.copy()
+    return [operation]
+
+
+def main() -> None:
     parser = argparse.ArgumentParser(prog="cs")
     parser.add_argument("target", nargs="?", default=".", help="Target directory (default: CWD)")
-    parser.add_argument("-g", "--game", default="none", choices=["none", "wuwa", "endfield"], help="Game preset")
-    parser.add_argument("-o", "--operation", default="full", help="Operation or 'all' or 'create-directory'")
-    parser.add_argument("--blur", action="append", type=parse_blur, help="Manual override: blur (x,y,w,h)")
+    parser.add_argument(
+        "-g",
+        "--game",
+        default="none",
+        choices=["none", "wuwa", "endfield"],
+        help="Game preset",
+    )
+    parser.add_argument(
+        "-o",
+        "--operation",
+        default="full",
+        help="Operation or 'all' or 'create-directory'",
+    )
+    parser.add_argument(
+        "--blur",
+        action="append",
+        type=parse_blur,
+        help="Manual override: blur (x,y,w,h)",
+    )
     parser.add_argument("--crop-height", type=int, help="Manual override: crop height")
-    parser.add_argument("--crop-pos", choices=["bottom", "center", "full"], help="Manual override: crop position")
+    parser.add_argument(
+        "--crop-pos",
+        choices=["bottom", "center", "full"],
+        help="Manual override: crop position",
+    )
     parser.add_argument("--width-from", type=int, help="Manual override: source width")
     parser.add_argument("--width-to", type=int, help="Manual override target width")
-    args = parser.parse_args(namespace=ConvertScreenshotNamespace)
+    args = parser.parse_args(namespace=ConvertScreenshotNamespace())
 
     target = Path(args.target).resolve()
     if not target.exists():
@@ -242,14 +309,9 @@ def main():
         print("Game must be specified for this operation", file=sys.stderr)
         sys.exit(1)
 
-    # determine which operations to run
-    if op == "all":
-        operation_list = ALL_OPERATION.copy()
-    else:
-        operation_list = [op]
+    operation_list = get_operation_list(op)
 
-    # find directories to process
-    job_dirs = []
+    job_dirs: list[Path] = []
     if target.is_dir():
         if has_images(target):
             job_dirs.append(target)
@@ -269,13 +331,12 @@ def main():
                 print(f"Unknown operation: {op_name}", file=sys.stderr)
                 continue
 
-            preset = None
+            preset: PresetConfig | None = None
 
             if args.game != "none":
                 preset = CONFIG["game"].get(args.game, {}).get(op_name)
 
-            # build job dict with safe fallbacks
-            job = {
+            job: JobPayload = {
                 "operation": op_name,
                 "game": args.game,
                 "blur": preset.get("blur", [])[:] if preset else [],
@@ -288,7 +349,6 @@ def main():
                 "delete_job_file": True,
             }
 
-            # apply manual overrides
             if args.blur:
                 job["blur"] = args.blur
             if args.crop_height is not None:
