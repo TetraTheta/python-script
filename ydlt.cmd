@@ -2,4 +2,4 @@
 @echo off
 set "PYTHONDONTWRITEBYTECODE=1"
 set "PYTHONPATH=%~dp0\script\library"
-python "%~dp0\python-script\youtube_thumbnail_download.py" %1
+python "%~dp0\script\youtube_thumbnail_download.py" %1
