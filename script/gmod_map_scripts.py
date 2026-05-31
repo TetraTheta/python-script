@@ -38,13 +38,14 @@ PITCH_VALUES = {
 }
 
 
+def format_cwd() -> str:
+    cwd = Path.cwd()
+    return cwd.name.lower().replace(" ", "")
+
+
 def lua_string(value: str) -> str:
     escaped = (
-        value.replace("\\", "\\\\")
-        .replace("\r", "\\r")
-        .replace("\n", "\\n")
-        .replace("\t", "\\t")
-        .replace('"', '\\"')
+        value.replace("\\", "\\\\").replace("\r", "\\r").replace("\n", "\\n").replace("\t", "\\t").replace('"', '\\"')
     )
     return f'"{escaped}"'
 
@@ -128,9 +129,7 @@ def build_closedcaption_lua(keyvalues: ValveKeyValue, addon_name: str) -> str:
     return "\n".join(lines)
 
 
-def build_sound_field_lines(
-    keyvalues: ValveKeyValue, sound_name: str
-) -> list[str] | None:
+def build_sound_field_lines(keyvalues: ValveKeyValue, sound_name: str) -> list[str] | None:
     rndwave = keyvalues.block("rndwave")
     waves = rndwave.values("wave") if rndwave is not None else keyvalues.values("wave")
 
@@ -182,16 +181,14 @@ def build_sound_lua(keyvalues: ValveKeyValue, addon_name: str, source_name: str)
         lines.extend(field_lines)
         lines.append("})")
 
-    lines.extend(
-        [f'print("[{addon_name}] Registering sounds ({source_name})... DONE")', ""]
-    )
+    lines.extend([f'print("[{addon_name}] Registering sounds ({source_name})... DONE")', ""])
     return "\n".join(lines)
 
 
 def run_closedcaption(input_path: Path | None, output_path: Path | None) -> None:
     cwd = Path.cwd()
     source = input_path or cwd / "resource" / "closecaption_english.txt"
-    output = output_path or cwd / "lua" / "subtitles" / f"{cwd.name}_subtitle.lua"
+    output = output_path or cwd / "lua" / "subtitles" / f"{format_cwd()}_subtitle.lua"
     content = build_closedcaption_lua(ValveKeyValue.from_file(source), cwd.name)
     write_lua(output, content)
     print(f"{Color.GREEN}[INFO ]{Color.RESET} Wrote '{output}'")
@@ -199,15 +196,11 @@ def run_closedcaption(input_path: Path | None, output_path: Path | None) -> None
 
 def run_sound(input_path: Path | None, output_path: Path | None) -> None:
     if input_path is None:
-        raise ValueError(
-            "The sound command requires an input file. Use '-i file_path'."
-        )
+        raise ValueError("The sound command requires an input file. Use '-i file_path'.")
 
     cwd = Path.cwd()
     source = input_path
-    output = (
-        output_path or cwd / "lua" / "autorun" / f"sound_{cwd.name}_{source.stem}.lua"
-    )
+    output = output_path or cwd / "lua" / "autorun" / f"sound_{format_cwd()}_{source.stem}.lua"
     content = build_sound_lua(ValveKeyValue.from_file(source), cwd.name, source.stem)
     write_lua(output, content)
     print(f"{Color.GREEN}[INFO ]{Color.RESET} Wrote '{output}'")
@@ -224,9 +217,7 @@ def add_output_argument(parser: argparse.ArgumentParser) -> None:
 
 
 def parse_args() -> GmodMapScriptsNamespace:
-    parser = argparse.ArgumentParser(
-        description="Generate Garry's Mod Lua files from Source engine script files."
-    )
+    parser = argparse.ArgumentParser(description="Generate Garry's Mod Lua files from Source engine script files.")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     closedcaption_parser = subparsers.add_parser(
