@@ -1,31 +1,31 @@
-import sys
+#!/usr/bin/env python3
+"""주어진 정수가 소수인지 아닌지 판별한다"""
+
 import tkinter.messagebox as msgbox
+from argparse import ArgumentParser
 
 
-def is_prime(n: int) -> bool:
-    if n < 2:
-        return False
-    for i in range(2, int(n**0.5) + 1):
-        if n % i == 0:
-            return False
-    return True
+def parse_args() -> int:
+    parser = ArgumentParser(description="Check if the given integer is prime.")
+    parser.add_argument("number", type=int, help="Integer to test")
+    return parser.parse_args().number
 
 
-##########
-#  MAIN  #
-##########
-def main():
-    if len(sys.argv) < 2:
-        msgbox.showerror("Input Error", "Please provide a valid integer as a command-line argument.")
-        sys.exit(1)
-
+def main() -> None:
     try:
-        number = int(sys.argv[1])  # Convert the input to an integer
-    except ValueError:
-        msgbox.showerror("Type Error", "Argument must be an integer.")
-        sys.exit(1)
+        number = parse_args()
+    except SystemExit:
+        msgbox.showerror("Input Error", "Please provide a valid integer as a command-line argument.")
+        raise
 
-    if is_prime(number):
+    is_prime = number >= 2
+    # 제곱근까지만 나눠 보면 합성수 여부를 충분히 판별할 수 있음
+    for divisor in range(2, int(number**0.5) + 1):
+        if number % divisor == 0:
+            is_prime = False
+            break
+
+    if is_prime:
         msgbox.showinfo("YES", f"{number} is a Prime Number")
     else:
         msgbox.showwarning("NO", f"{number} is NOT a Prime Number")

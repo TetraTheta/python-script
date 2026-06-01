@@ -1,63 +1,62 @@
-import argparse
+#!/usr/bin/env python3
+"""YouTube 썸네일을 다운로드받는다"""
+
 import re
 import sys
-from argparse import Namespace
+from argparse import ArgumentParser, Namespace
 from pathlib import Path
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 from urllib.request import urlopen
 
 
-class YoutubeThumbnailNamespace(Namespace):
+class YoutubeThumbnailArgs(Namespace):
     input: str
 
 
-def get_youtube_id(url: str) -> str:
-    # Plain video IDs can be used directly.
-    if re.fullmatch(r"[a-zA-Z0-9_-]{11}", url):
-        return url
-
-    try:
-        url = re.sub(
-            r"(attribution_link|uploademail|youtube-nocookie)",
-            "x",
-            url,
-            flags=re.IGNORECASE,
-        )
-        parsed = urlparse(url)
-
-        # Some shared URLs nest the real video URL in a query parameter.
-        query = parse_qs(parsed.query)
-        embed = query.get("url")
-        if embed:
-            parsed = urlparse(embed[0])
-            query = parse_qs(parsed.query)
-
-        v = query.get("v")
-        if v:
-            return v[0]
-
-        del_params = ["a", "app", "list", "feature", "rel", "si"]
-        filtered_query = {k: v for k, v in query.items() if k not in del_params}
-        rebuilt_url = urlunparse(parsed._replace(query=urlencode(filtered_query, doseq=True)))
-
-        rebuilt_url = rebuilt_url.replace("%3D", "=")
-
-        match = re.search(r"[a-zA-Z0-9_-]{11}", rebuilt_url)
-        if match:
-            return match.group(0)
-
-        return ""
-    except ValueError:
-        return ""
+def parse_args() -> YoutubeThumbnailArgs:
+    parser = ArgumentParser(description="Download YouTube max resolution thumbnail image.")
+    parser.add_argument("input", help="YouTube URL or YouTube Video ID")
+    return parser.parse_args(namespace=YoutubeThumbnailArgs())
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Download YouTube max resolution thumbnail image.")
-    parser.add_argument("input", help="YouTube URL or YouTube Video ID")
+    args = parse_args()
+    raw_input = args.input
 
-    args = parser.parse_args(namespace=YoutubeThumbnailNamespace())
+    if re.fullmatch(r"[a-zA-Z0-9_-]{11}", raw_input):
+        video_id = raw_input
+    else:
+        video_id = ""
+        try:
+            # 공유 URL에 섞이는 추적/중첩 URL 요소를 단순화한 뒤 v 파라미터를 우선 확인
+            normalized_url = re.sub(
+                r"(attribution_link|uploademail|youtube-nocookie)",
+                "x",
+                raw_input,
+                flags=re.IGNORECASE,
+            )
+            parsed = urlparse(normalized_url)
+            query = parse_qs(parsed.query)
+            embed = query.get("url")
+            if embed:
+                parsed = urlparse(embed[0])
+                query = parse_qs(parsed.query)
 
-    video_id = get_youtube_id(args.input)
+            values = query.get("v")
+            if values:
+                video_id = values[0]
+            else:
+                # 일반적이지 않은 공유 URL은 불필요한 query를 지운 뒤 11자 ID 패턴을 마지막으로 찾음
+                remove_params = {"a", "app", "list", "feature", "rel", "si"}
+                filtered_query = {key: value for key, value in query.items() if key not in remove_params}
+                rebuilt_url = urlunparse(parsed._replace(query=urlencode(filtered_query, doseq=True))).replace(
+                    "%3D", "="
+                )
+                match = re.search(r"[a-zA-Z0-9_-]{11}", rebuilt_url)
+                if match:
+                    video_id = match.group(0)
+        except ValueError:
+            video_id = ""
 
     if len(video_id) != 11:
         print("Failed to parse valid YouTube Video ID", file=sys.stderr)
@@ -71,8 +70,7 @@ def main() -> None:
             if response.status != 200:
                 print(f"Thumbnail not available (HTTP {response.status})", file=sys.stderr)
                 sys.exit(1)
-            data = response.read()
-            output_path.write_bytes(data)
+            output_path.write_bytes(response.read())
         print(f"Downloaded: {output_path}")
     except OSError as error:
         print(f"Download failed: {error}", file=sys.stderr)

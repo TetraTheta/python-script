@@ -1,45 +1,62 @@
-from __future__ import annotations
+#!/usr/bin/env python3
+"""주어진 경로 아래의 모든 빈 폴더를 제거한다"""
 
 import os
 import platform
-import shutil
 import sys
-from argparse import ArgumentParser, Namespace, RawTextHelpFormatter
+from argparse import ArgumentParser, Namespace
 from pathlib import Path
 
-
-class Color:
-    BLUE = "\033[0;36m"
-    GREEN = "\033[0;32m"
-    RED = "\033[0;31m"
-    RESET = "\033[0m"
-    YELLOW = "\033[1;33m"
+from library.cli import TerminalHelpFormatter, confirm_or_exit
+from library.console import ConsoleColor, format_status
 
 
-class CustomFormatter(RawTextHelpFormatter):
-    def __init__(self, prog: str) -> None:
-        width = max(80, shutil.get_terminal_size().columns - 2)
-        super().__init__(prog, width=width)
+class RemoveEmptyDirectoryArgs(Namespace):
+    target: Path | str
+    yes: bool
 
 
-class RemoveEmptyDirectoryNamespace(Namespace):
-    target: str | Path = Path.cwd()
-    yes: bool = False
+def parse_args() -> RemoveEmptyDirectoryArgs:
+    cli = ArgumentParser(
+        prog="remove-empty-directory",
+        description="Remove empty directories from given path",
+        formatter_class=TerminalHelpFormatter,
+    )
+    cli.add_argument("-y", "--yes", action="store_true", help="Skip confirmation prompt\n(default: False)")
+    cli.add_argument("target", default=str(Path.cwd()), nargs="?", help=f"Target directory\n(default: {Path.cwd()})")
+    return cli.parse_args(namespace=RemoveEmptyDirectoryArgs())
 
 
-def get_exclusion_paths() -> list[Path]:
-    opsys = platform.system()
-    if opsys == "Windows":
-        raw_exclusion = [
-            r"%AppData%\\Microsoft",
-            r"%LocalAppData%\\Microsoft",
-        ]
+def main() -> None:
+    # Windows junction 판별에 Path.is_junction()을 사용하므로 3.12 이상이 필요함
+    if sys.version_info < (3, 12):
+        print(format_status("ERROR", ConsoleColor.RED, "This script requires Python version above 3.12"))
+        sys.exit(1)
+
+    args = parse_args()
+    target = Path(args.target).resolve()
+
+    if not target.is_dir():
+        print(format_status("ERROR", ConsoleColor.RED, f"'{target}' is not a directory"))
+        sys.exit(1)
+
+    if not args.yes:
+        print(format_status("TARGET", ConsoleColor.GREEN, str(target)))
+        confirm_or_exit(
+            "Do you want to remove empty directories from this path? (yes/no): ",
+            cancel_message="Operation canceled",
+        )
+
+    if platform.system() == "Windows":
+        raw_exclusion = [r"%AppData%\\Microsoft", r"%LocalAppData%\\Microsoft"]
+        exclusions = [Path(os.path.expandvars(path)).resolve() for path in raw_exclusion]
     else:
-        return []
-    return [Path(os.path.expandvars(p)).resolve() for p in raw_exclusion]
+        exclusions = []
+
+    remove_empty_directories(target, target, exclusions)
 
 
-def remove_empty_directory(current: Path, root: Path, exclusion: list[Path]) -> None:
+def remove_empty_directories(current: Path, root: Path, exclusions: list[Path]) -> None:
     if not current.is_dir():
         return
 
@@ -48,76 +65,31 @@ def remove_empty_directory(current: Path, root: Path, exclusion: list[Path]) -> 
         is_symlink = current.is_symlink()
 
         if is_symlink or is_junction:
-            print(f"{Color.BLUE}[SYMLINK]{Color.RESET} {current}")
+            print(format_status("SYMLNK", ConsoleColor.BLUE, str(current)))
             return
 
         for child in current.iterdir():
-            if child.is_dir():
-                try:
-                    resolved = child.resolve(strict=False)
-                    if any(resolved.is_relative_to(exc) for exc in exclusion):
-                        print(f"{Color.BLUE}[ SKIP  ]{Color.RESET} {child}")
-                        continue
-                except OSError:
-                    pass
-                remove_empty_directory(child, root, exclusion)
+            if not child.is_dir():
+                continue
+            try:
+                resolved = child.resolve(strict=False)
+                if any(resolved.is_relative_to(exclusion) for exclusion in exclusions):
+                    print(format_status("SKIP", ConsoleColor.BLUE, str(child)))
+                    continue
+            except OSError:
+                pass
+            remove_empty_directories(child, root, exclusions)
 
         if current != root:
             try:
                 current.rmdir()
-                print(
-                    f"{Color.YELLOW}[REMOVE ]{Color.RESET} "
-                    f"{current.parent}{os.sep}{Color.YELLOW}{current.name}{Color.RESET}"
-                )
+                print(format_status("REMOVE", ConsoleColor.YELLOW, f"{current.parent}{os.sep}{current.name}"))
             except OSError:
                 pass
-
     except PermissionError:
-        print(f"{Color.RED}[PERMERR]{Color.RESET} {current}")
+        print(format_status("PERM", ConsoleColor.RED, str(current)))
     except NotADirectoryError:
         pass
-
-
-def main() -> None:
-    # Path.is_junction() is available on Python 3.12 and newer.
-    if sys.version_info < (3, 12):
-        print(f"{Color.RED}[ ERROR ]{Color.RESET} This script requires Python version above 3.12")
-        sys.exit(1)
-
-    cli = ArgumentParser(
-        prog="remove-empty-directory",
-        description="Remove empty directories from given path",
-        formatter_class=CustomFormatter,
-    )
-    cli.add_argument(
-        "-y",
-        "--yes",
-        action="store_true",
-        help="Skip confirmation prompt\n(default: False)",
-    )
-    cli.add_argument(
-        "target",
-        default=str(Path.cwd()),
-        nargs="?",
-        help=f"Target directory\n(default: {Path.cwd()})",
-    )
-
-    args = cli.parse_args(namespace=RemoveEmptyDirectoryNamespace())
-    target = Path(args.target).resolve()
-
-    if not target.is_dir():
-        print(f"{Color.RED}[ ERROR ]{Color.RESET} '{target}' is not a directory")
-        sys.exit(1)
-
-    if not args.yes:
-        print(f"{Color.GREEN}[TARGET ]{Color.RESET} {target}")
-        result = input("Do you want to remove empty directories from this path? (yes/no): ").strip().lower()
-        if not result.startswith("y"):
-            print(f"{Color.RED}[CANCEL ]{Color.RESET} Operation canceled")
-            sys.exit(1)
-
-    exclusions = get_exclusion_paths()
-    remove_empty_directory(target, target, exclusions)
 
 
 if __name__ == "__main__":

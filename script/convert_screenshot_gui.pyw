@@ -1,3 +1,6 @@
+#!/usr/bin/env python3
+"""게임 스크린샷을 사전 정의된 프리셋에 따라 잘라내거나, 부분 블러 처리, 크기 조절 등을 수행한 후 WebP 포맷으로 저장한다 (GUI)"""
+
 import json
 import queue
 import shutil
@@ -8,15 +11,15 @@ import tkinter as tk
 import tkinter.messagebox as msgbox
 import tkinter.ttk as ttk
 from pathlib import Path
-from typing import List, TypedDict
+from typing import TypedDict
 
 IMAGE_EXTS = (".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tiff")
 
 
-class JobFile(TypedDict):
+class ConvertJob(TypedDict):
     operation: str
     game: str
-    blur: List[List[int]]
+    blur: list[list[int]]
     crop_height: int
     crop_pos: str
     save_at_parent: bool
@@ -27,11 +30,11 @@ class JobFile(TypedDict):
 
 
 class ConvertScreenshotGUI:
-    def __init__(self, job: JobFile, job_file_path: Path, verbose: bool = False):
+    def __init__(self, job: ConvertJob, job_file_path: Path, verbose: bool = False) -> None:
         self.verbose = verbose
         self.had_error = False
 
-        # get job file
+        # CLI가 생성한 Job 파일 불러오기
         self.job = job
         self.job_file_path = job_file_path
         self.queue = queue.Queue()
@@ -40,45 +43,45 @@ class ConvertScreenshotGUI:
         self.temp_dir = self.target_dir / "cs-temp"
         self.converted_dir = self.target_dir.parent if job["save_at_parent"] else self.target_dir / "converted"
 
-        # root UI
+        # 고정 크기 창 생성
         self.root = tk.Tk()
         self.root.geometry("484x461")
         self.root.resizable(False, False)
         self.root.title("ConvertScreenshot")
         # self.root.bind("<Destroy>", self.on_close_window)
 
-        # global style
+        # 글꼴 설정
         self.root.option_add("*TLabel.font", "{Segoe UI} 10")
         self.root.option_add("*Text.font", "{Consolas} 10")
 
-        # 1st Text row
+        # 첫 번째 줄: 대상
         self.labelTarget = ttk.Label(self.root, text=f"Target: {self.job['target']}")
         self.labelTarget.configure(justify="left")
         self.labelTarget.pack(fill="x", padx=8, pady=(8, 0), side="top")
 
-        # 2nd Text row
+        # 두 번째 줄: 게임
         self.labelGame = ttk.Label(self.root, text=f"Game: {self.job['game']}")
         self.labelGame.configure(justify="left")
         self.labelGame.pack(fill="x", padx=8, pady=(8, 8), side="top")
 
-        # 3rd Text row
+        # 세 번째 줄: 스크린샷 유형
         self.labelOperation = ttk.Label(self.root, text=f"Operation: {self.job['operation']}")
         self.labelOperation.configure(justify="left")
         self.labelOperation.pack(fill="x", padx=8, pady=(0, 8), side="top")
 
-        # progress bar
+        # 작업 진행도
         self.progress = ttk.Progressbar(self.root)
         self.prog = tk.IntVar(value=0)
         self.progress.configure(variable=self.prog)
         self.progress.pack(fill="x", padx=8, pady=(0, 8), side="top")
 
-        # log
+        # 로그
         self.textLog = tk.Text(self.root, wrap="word", state="disabled")
         self.textLog.pack(expand=True, fill="both", padx=8, pady=(0, 8), side="top")
 
         self.root.after(100, self.process_queue)
-        # t = threading.Thread(target=self.run_job, daemon=True)
-        t = threading.Thread(target=self.run_job)
+        t = threading.Thread(target=self.run_job, daemon=True)
+        # t = threading.Thread(target=self.run_job)
         t.start()
 
     def check_dependencies(self) -> bool:
@@ -101,7 +104,7 @@ class ConvertScreenshotGUI:
 
         return all_found
 
-    def center_window(self):
+    def center_window(self) -> None:
         if self.root.winfo_ismapped():
             min_w, min_h = self.root.wm_minsize()
             max_w, max_h = self.root.wm_maxsize()
@@ -113,19 +116,19 @@ class ConvertScreenshotGUI:
             y = (scr_h // 2) - (final_h // 2)
             geometry = f"{final_w}x{final_h}+{x}+{y}"
 
-            def set_geometry():
+            def set_geometry() -> None:
                 self.root.geometry(geometry)
 
             self.root.after_idle(set_geometry)
         else:
             self.root.after(5, self.center_window)
 
-    def run(self, center=False):
+    def run(self, center: bool = False) -> None:
         if center:
             self.center_window()
         self.root.mainloop()
 
-    def process_queue(self):
+    def process_queue(self) -> None:
         try:
             while True:
                 cmd, val = self.queue.get_nowait()
@@ -144,7 +147,7 @@ class ConvertScreenshotGUI:
             pass
         self.root.after(100, self.process_queue)
 
-    def flash_window(self):
+    def flash_window(self) -> None:
         if sys.platform != "win32":
             return
 
@@ -169,16 +172,16 @@ class ConvertScreenshotGUI:
         flash = FLASHWINFO(ctypes.sizeof(FLASHWINFO), hwnd, FLASHW_ALL | FLASHW_TIMERNOFG, 5, 0)
         user32.FlashWindowEx(ctypes.byref(flash))
 
-    def log(self, msg: str, isverbose: bool = False):
+    def log(self, msg: str, isverbose: bool = False) -> None:
         if not isverbose or self.verbose:
             self.queue.put(("LOG", msg))
 
-    def update_prog(self, val, maximum=None):
+    def update_progress(self, val: int, maximum: int | None = None) -> None:
         if maximum is not None:
             self.queue.put(("PROG_MAX", maximum))
         self.queue.put(("PROG", val))
 
-    def run_job(self):
+    def run_job(self) -> None:
         try:
             self.prepare_dirs()
             self.process_images()
@@ -193,20 +196,20 @@ class ConvertScreenshotGUI:
             else:
                 self.root.after(0, self.root.destroy)
 
-    def prepare_dirs(self):
+    def prepare_dirs(self) -> None:
         if self.temp_dir.exists():
             shutil.rmtree(self.temp_dir, ignore_errors=True)
         self.temp_dir.mkdir(parents=True, exist_ok=True)
         if not self.converted_dir.exists():
             self.converted_dir.mkdir(parents=True, exist_ok=True)
 
-    def process_images(self):
+    def process_images(self) -> None:
         files = [p for p in self.target_dir.iterdir() if p.is_file() and p.suffix.lower() in IMAGE_EXTS]
         if not files:
             self.log("No images found.")
             return
 
-        self.update_prog(0, maximum=len(files))
+        self.update_progress(0, maximum=len(files))
 
         for idx, src in enumerate(files, 1):
             self.log(f"[{idx}/{len(files)}] Processing: {src.name}")
@@ -216,11 +219,11 @@ class ConvertScreenshotGUI:
 
             self.run_ffmpeg(src, temp_png)
             self.run_cwebp(temp_png, final_out)
-            self.update_prog(idx)
+            self.update_progress(idx)
 
-    def run_ffmpeg(self, src: Path, out_png: Path):
-        filter = self.make_ffmpeg_filter(src)
-        if not filter:
+    def run_ffmpeg(self, src: Path, out_png: Path) -> None:
+        filter_text = self.make_ffmpeg_filter(src)
+        if not filter_text:
             raise RuntimeError("No FFmpeg filters generated")
 
         cmd = [
@@ -230,7 +233,7 @@ class ConvertScreenshotGUI:
             "-i",
             str(src),
             "-filter_complex",
-            filter,
+            filter_text,
             "-map",
             "[vout]",
             "-frames:v",
@@ -266,23 +269,23 @@ class ConvertScreenshotGUI:
                 return img_width > self.job["width_to"]
             return img_width == self.job["width_from"]
 
-        parts: List[str] = []
+        parts: list[str] = []
         parts.append("[0:v]format=rgba[in0]")
         last = "[in0]"
 
         actual_w, actual_h = self.get_image_dimension(src)
 
-        # blur
+        # 프리셋 좌표가 원본 크기와 맞을 때만 UI 영역 blur를 적용
         if should_blur(actual_w, actual_h):
             for i, (x, y, w, h) in enumerate(self.job["blur"]):
                 parts.append(f"{last}split=2[base{i}][tmp{i}]")
                 parts.append(
-                    f"[tmp{i}]crop={w}:{h}:{x}:{y},boxblur=min(w\,h)/2:5:min(cw\,ch)/2:5:min(w\,h)/2:5[blur{i}]"  # pyright: ignore[reportInvalidStringEscapeSequence]
+                    f"[tmp{i}]crop={w}:{h}:{x}:{y},boxblur=min(w\\,h)/2:5:min(cw\\,ch)/2:5:min(w\\,h)/2:5[blur{i}]"
                 )
                 parts.append(f"[base{i}][blur{i}]overlay={x}:{y}[out{i}]")
                 last = f"[out{i}]"
 
-        # crop
+        # Operation별 세로 영역을 잘라냄
         crop_h = self.job.get("crop_height", 0)
         pos = self.job.get("crop_pos", "full")
 
@@ -293,7 +296,7 @@ class ConvertScreenshotGUI:
                 parts.append(f"{last}crop=in_w:{crop_h}:0:(in_h-{crop_h})/2[outc]")
             last = "[outc]"
 
-        # resize / final map
+        # 새 이미지 가로 크기 조절
         if should_resize(actual_w):
             parts.append(f"{last}scale={self.job['width_to']}:-1:flags=lanczos[vout]")
         else:
@@ -306,7 +309,7 @@ class ConvertScreenshotGUI:
         width, height = map(int, p.stdout.strip().split(" x "))
         return width, height
 
-    def run_cwebp(self, src_png: Path, out_webp: Path):
+    def run_cwebp(self, src_png: Path, out_webp: Path) -> None:
         cmd = ["cwebp", "-quiet", "-q", "85", str(src_png), "-o", str(out_webp)]
 
         si = None
@@ -323,7 +326,7 @@ class ConvertScreenshotGUI:
             self.log(p.stderr.strip())
             raise RuntimeError(f"cwebp failed with exit code {p.returncode}")
 
-    def cleanup(self):
+    def cleanup(self) -> None:
         if self.temp_dir.exists():
             shutil.rmtree(self.temp_dir, ignore_errors=True)
             self.log("Temporary directory removed.")
@@ -335,12 +338,7 @@ class ConvertScreenshotGUI:
                 self.log(f"Failed to delete job file: {e}")
 
 
-def load_job(path: Path) -> JobFile:
-    with path.open("r", encoding="utf-8") as f:
-        return json.load(f)
-
-
-def main():
+def main() -> None:
     if len(sys.argv) != 2:
         sys.exit(1)
 
@@ -349,7 +347,8 @@ def main():
         sys.exit(1)
 
     try:
-        job = load_job(job_path)
+        with job_path.open("r", encoding="utf-8") as file:
+            job: ConvertJob = json.load(file)
 
         gui = ConvertScreenshotGUI(job, job_path)
         gui.root.withdraw()

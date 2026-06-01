@@ -2,5 +2,8 @@
   "[python]": {
     "editor.defaultFormatter": "charliermarsh.ruff"
   },
+  "python.analysis.extraPaths": [
+    "./script"
+  ],
   "ruff.lineLength": 120,
 }
