@@ -1,6 +1,8 @@
 from dataclasses import dataclass
 from pathlib import Path
 
+from library.text_file import read_text_with_fallback
+
 
 @dataclass(frozen=True)
 class KeyValueItem:
@@ -139,14 +141,7 @@ class ValveKeyValue:
 
     @classmethod
     def from_file(cls, path: Path) -> "ValveKeyValue":
-        data = path.read_bytes()
-        for encoding in ("utf-8-sig", "utf-16", "utf-16-le", "utf-16-be"):
-            try:
-                return cls.from_text(data.decode(encoding))
-            except UnicodeDecodeError:
-                continue
-
-        return cls.from_text(data.decode("cp1252"))
+        return cls.from_text(read_text_with_fallback(path))
 
     @classmethod
     def from_text(cls, text: str) -> "ValveKeyValue":
