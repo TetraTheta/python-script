@@ -10,6 +10,7 @@ from argparse import ArgumentParser, Namespace
 from pathlib import Path
 
 from library.console import ConsoleColor, format_status
+from library.text_file import read_text_with_fallback
 
 INPUT_GENERIC = [
     ("onallspawneddead", "OnAllSpawnedDead"),
@@ -229,7 +230,7 @@ def normalize_vmf_entities(target: Path) -> None:
         sys.exit(1)
 
     try:
-        content = target.read_text().lower()
+        content = read_text_with_fallback(target).lower()
         # VMF 소문자 -> CamelCase 변환
         for old, new in INPUTS:
             content = content.replace(f'"{old}"', f'"{new}"')

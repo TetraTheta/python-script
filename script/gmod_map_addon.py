@@ -13,6 +13,7 @@ from shutil import move, rmtree
 from typing import Callable
 
 from library.console import ConsoleColor, format_status
+from library.text_file import read_text_with_fallback
 
 
 class GmodMapAddonArgs(Namespace):
@@ -147,7 +148,7 @@ def main() -> None:
     for vmt in (target / "materials").rglob("*.vmt"):
         try:
             remove_readonly(vmt)
-            content = vmt.read_text()
+            content = read_text_with_fallback(vmt)
             content = content.replace('"SDK_LightmappedGeneric"', '"LightmappedGeneric"')
             content = content.replace('"SDK_Sprite"', '"Sprite"')
             content = content.replace('"SDK_VertexLitGeneric"', '"VertexLitGeneric"')
