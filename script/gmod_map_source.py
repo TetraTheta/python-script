@@ -10,7 +10,7 @@ from argparse import ArgumentParser, Namespace
 from pathlib import Path
 
 from library.console import ConsoleColor, format_status
-from library.text_file import read_text_with_fallback
+from library.text_file import read_text_with_fallback, write_text
 
 INPUT_GENERIC = [
     ("onallspawneddead", "OnAllSpawnedDead"),
@@ -237,7 +237,7 @@ def normalize_vmf_entities(target: Path) -> None:
         separator = chr(27)  # ESC
         for old, new in OUTPUTS:
             content = content.replace(f"{separator}{old}{separator}", f"{separator}{new}{separator}")
-        target.write_text(content)
+        write_text(target, content)
     except OSError as error:
         print(format_status("ERROR", ConsoleColor.RED, f"Failed to process '{target}': {error}"))
 

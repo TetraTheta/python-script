@@ -6,6 +6,7 @@ from argparse import ArgumentParser, Namespace
 from pathlib import Path
 
 from library.console import ConsoleColor, format_status
+from library.text_file import write_text
 from library.valve_keyvalue import ValveKeyValue
 
 CLOSEDCAPTION_ALIASES = {"cc", "caption", "captions", "closedcaption", "closedcaptions", "subtitle", "subtitles"}
@@ -193,7 +194,7 @@ def quote_lua_string(value: str) -> str:
 
 def write_lua_file(path: Path, content: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(content, encoding="utf-8", newline="\r\n")
+    write_text(path, content, line_ending="\r\n")
 
 
 if __name__ == "__main__":

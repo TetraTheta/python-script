@@ -10,7 +10,7 @@ from time import perf_counter
 
 from library.cli import TerminalHelpFormatter
 from library.console import ConsoleColor, format_status
-from library.text_file import read_text_with_fallback
+from library.text_file import read_text_with_fallback, write_text
 from library.valve_fgd import FgdEntityDefinition, FgdParseError, FgdParser
 
 DEFAULT_FGD_PATH = Path(r"E:\Program Files\Steam\steamapps\common\GarrysMod\bin\garrysmod.fgd")
@@ -246,7 +246,7 @@ def optimize_vmf(
     output = source if options.inplace else source.with_name(f"{source.stem}{options.suffix}{source.suffix}")
 
     try:
-        output.write_text(output_text, encoding="utf-8", newline="")
+        write_text(output, output_text)
     except OSError as error:
         elapsed_ms = int((perf_counter() - started_at) * 1000)
         return OptimizeResult(

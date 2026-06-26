@@ -1,9 +1,17 @@
+import subprocess
+import sys
 from pathlib import Path
 
 UTF8_BOM = b"\xef\xbb\xbf"
 UTF16_LE_BOM = b"\xff\xfe"
 UTF16_BE_BOM = b"\xfe\xff"
 TEXT_ENCODINGS = ("utf-8",)
+
+
+def write_text(path: Path, data: str, encoding: str = "utf-8", line_ending: str | None = None) -> None:
+    """Write text with Git attributes, unless `line_ending` is explicitly set."""
+    newline = git_line_ending_or_default(path) if line_ending is None else line_ending
+    path.write_text(data, encoding=encoding, newline=newline)
 
 
 def read_text_with_fallback(path: Path, fallback_encoding: str = "cp949") -> str:
@@ -18,6 +26,52 @@ def read_text_with_fallback(path: Path, fallback_encoding: str = "cp949") -> str
         except UnicodeDecodeError:
             continue
     return data.decode(fallback_encoding)
+
+
+def git_line_ending_or_default(path: Path) -> str:
+    """Return the Git-configured line ending for a file, or the host OS default."""
+    resolved = path.resolve()
+    repo = _find_git_root(resolved.parent)
+    if repo is None:
+        return _default_line_ending()
+
+    try:
+        attr = subprocess.run(
+            ["git", "-C", str(repo), "check-attr", "eol", "--", str(resolved.relative_to(repo))],
+            capture_output=True,
+            check=False,
+            encoding="utf-8",
+        ).stdout.strip()
+    except (OSError, ValueError):
+        return _default_line_ending()
+    if attr.endswith(": eol: crlf"):
+        return "\r\n"
+    if attr.endswith(": eol: lf"):
+        return "\n"
+    return _default_line_ending()
+
+
+def _default_line_ending() -> str:
+    if sys.platform == "win32":
+        return "\r\n"
+    if sys.platform == "darwin":
+        return "\r"
+    return "\n"
+
+
+def _find_git_root(path: Path) -> Path | None:
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(path), "rev-parse", "--show-toplevel"],
+            capture_output=True,
+            check=False,
+            encoding="utf-8",
+        )
+    except OSError:
+        return None
+    if result.returncode != 0:
+        return None
+    return Path(result.stdout.strip())
 
 
 def detect_unicode_encoding(data: bytes) -> str | None:
