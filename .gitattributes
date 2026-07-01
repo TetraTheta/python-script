@@ -1,0 +1,4 @@
+* text=auto
+*.cmd eol=crlf
+*.py eol=lf
+*.pyw eol=lf
