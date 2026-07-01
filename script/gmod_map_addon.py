@@ -13,7 +13,7 @@ from shutil import move, rmtree
 from typing import Callable
 
 from library.console import ConsoleColor, format_status
-from library.text_file import read_text_with_fallback
+from library.text_file import read_text_with_fallback, write_text
 
 
 class GmodMapAddonArgs(Namespace):
@@ -152,7 +152,7 @@ def main() -> None:
             content = content.replace('"SDK_LightmappedGeneric"', '"LightmappedGeneric"')
             content = content.replace('"SDK_Sprite"', '"Sprite"')
             content = content.replace('"SDK_VertexLitGeneric"', '"VertexLitGeneric"')
-            vmt.write_text(content)
+            write_text(vmt, content)
         except OSError as error:
             print(format_status("ERROR", ConsoleColor.RED, f"Failed to process '{vmt}': {error}"))
 

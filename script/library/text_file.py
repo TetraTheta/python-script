@@ -11,7 +11,11 @@ TEXT_ENCODINGS = ("utf-8",)
 def write_text(path: Path, data: str, encoding: str = "utf-8", line_ending: str | None = None) -> None:
     """Write text with Git attributes, unless `line_ending` is explicitly set."""
     newline = git_line_ending_or_default(path) if line_ending is None else line_ending
-    path.write_text(data, encoding=encoding, newline=newline)
+    path.write_text(normalize_newlines(data), encoding=encoding, newline=newline)
+
+
+def normalize_newlines(text: str) -> str:
+    return text.replace("\r\n", "\n").replace("\r", "\n")
 
 
 def read_text_with_fallback(path: Path, fallback_encoding: str = "cp949") -> str:
