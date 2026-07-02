@@ -9,7 +9,7 @@ from pathlib import Path
 from time import perf_counter
 from typing import Sequence
 
-from library.console import ConsoleColor, format_status
+from library.console import ConsoleColor, format_box, format_status
 
 GAME_DIR = r"E:/Program Files/Steam/steamapps/common/GarrysMod/garrysmod"
 VBSP = r"E:/Program Files/Steam/steamapps/common/GarrysMod/bin/win64/vbspplusplus.exe"
@@ -18,13 +18,40 @@ VRAD = r"E:/Program Files/Steam/steamapps/common/GarrysMod/bin/win64/vradplusplu
 
 
 class GmodMapCompileArgs(Namespace):
-    target: str | None
+    targets: list[str]
 
 
 def parse_args() -> GmodMapCompileArgs:
     parser = ArgumentParser(description="Compile Garry's Mod VMF map source.")
-    parser.add_argument("target", nargs="?")
+    parser.add_argument("targets", nargs="*", default=["."])
     return parser.parse_args(namespace=GmodMapCompileArgs())
+
+
+def resolve_targets(args: GmodMapCompileArgs) -> list[Path]:
+    targets = [Path(target).resolve() for target in args.targets]
+    files = [target for target in targets if target.is_file()]
+    directories = [target for target in targets if target.is_dir()]
+
+    if len(files) + len(directories) != len(targets):
+        missing = next(target for target in targets if not target.exists())
+        raise ValueError(f"'{missing}' does not exist")
+
+    if files and directories:
+        raise ValueError("Files and directories cannot be mixed")
+
+    if files:
+        invalid = next((target for target in files if target.suffix.lower() != ".vmf"), None)
+        if invalid:
+            raise ValueError(f"'{invalid}' is not a VMF file")
+        return files
+
+    if len(directories) > 1:
+        raise ValueError("Only one directory can be compiled at a time")
+
+    sources = sorted(directories[0].glob("*.vmf"))
+    if not sources:
+        raise ValueError(f"No VMF files found in '{directories[0]}'")
+    return sources
 
 
 def enable_virtual_terminal() -> None:
@@ -59,29 +86,13 @@ def run_tool(command: Sequence[str]) -> None:
         print(format_status("ERROR", ConsoleColor.RED, str(error)), file=sys.stderr)
 
 
-def main() -> None:
-    args = parse_args()
-
-    if not args.target:
-        print(format_status("ERROR", ConsoleColor.RED, "No argument is provided"))
-        sys.exit(1)
-
-    source = Path(args.target).resolve()
-    if source.suffix.lower() != ".vmf":
-        print(format_status("ERROR", ConsoleColor.RED, "The file is not map source file (.vmf)"))
-        sys.exit(1)
-
-    enable_virtual_terminal()
-
+def compile_map(source: Path) -> None:
     map_name = source.stem
     vmf = str(source.with_suffix(".vmf"))
     bsp = str(source.with_suffix(".bsp"))
     start = perf_counter()
 
-    print(
-        format_status("INFO", ConsoleColor.GREEN, f"Compiling {ConsoleColor.YELLOW}{map_name}{ConsoleColor.RESET}"),
-        flush=True,
-    )
+    print(format_box(f"Compiling {ConsoleColor.YELLOW}{map_name}{ConsoleColor.RESET}", ConsoleColor.GREEN), flush=True)
     print(f"{ConsoleColor.BLUE}================ 01: VBSP ================{ConsoleColor.RESET}", flush=True)
     run_tool(
         [
@@ -134,6 +145,21 @@ def main() -> None:
             f"Compile finished in {ConsoleColor.YELLOW}{format_duration(perf_counter() - start)}{ConsoleColor.RESET}",
         )
     )
+
+
+def main() -> None:
+    args = parse_args()
+    enable_virtual_terminal()
+
+    try:
+        sources = resolve_targets(args)
+    except ValueError as error:
+        print(format_status("ERROR", ConsoleColor.RED, str(error)), file=sys.stderr)
+        sys.exit(1)
+
+    for source in sources:
+        compile_map(source)
+
     subprocess.run("pause", shell=True, check=False)
 
 
