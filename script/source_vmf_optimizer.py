@@ -13,7 +13,8 @@ from library.console import ConsoleColor, format_status
 from library.text_file import read_text_with_fallback, write_text
 from library.valve_fgd import FgdEntityDefinition, FgdParseError, FgdParser
 
-DEFAULT_FGD_PATH = Path(r"E:\Program Files\Steam\steamapps\common\GarrysMod\bin\garrysmod.fgd")
+GMOD_BIN_PATH = Path(r"E:\Program Files\Steam\steamapps\common\GarrysMod\bin")
+DEFAULT_FGD_PATH = GMOD_BIN_PATH / ("sctools.fgd" if (GMOD_BIN_PATH / "sctools.fgd").exists() else "garrysmod.fgd")
 DEFAULT_OUTPUT_SUFFIX = "_opti"
 DEFAULT_REMOVE_WHITESPACE = True
 DEFAULT_REMOVE_VERTICES_PLUS = True
