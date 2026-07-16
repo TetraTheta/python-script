@@ -138,7 +138,7 @@ def main() -> None:
         ],
     )
     remove_files_except_patterns(target / "materials", ["*.vmt", "*.vtf"])
-    remove_files_matching_patterns(target / "models", ["*.vtf", "*.vmt", "*.jpg", "*.png"])
+    remove_files_matching_patterns(target / "models", ["*.jpg", "*.png", "*.qc", "*.smd", "*.vmt", "*.vtf"])
     remove_files_matching_patterns(target / "particles", ["particles_manifest.txt"])
     remove_files_except_patterns(target / "resource", ["*.txt"])
     remove_files_matching_patterns(target / "scripts", ["*manifest.txt", "chapterbackgrounds.txt"])
