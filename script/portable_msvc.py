@@ -24,6 +24,8 @@ from pathlib import Path
 from typing import TypeVar
 from urllib.request import Request
 
+from library.text_file import write_text
+
 T = TypeVar("T")
 
 
@@ -577,7 +579,7 @@ def main() -> None:
     # extra files for nvcc
     build = OUTPUT / "VC/Auxiliary/Build"
     build.mkdir(parents=True, exist_ok=True)
-    (build / "vcvarsall.bat").write_text("rem both bat files are here only for nvcc, do not call them manually")
+    write_text(build / "vcvarsall.bat", "rem both bat files are here only for nvcc, do not call them manually")
     (build / "vcvars64.bat").touch()
 
     # target별 setup 배치 파일을 만들어 환경 변수를 한 번에 설정
@@ -621,7 +623,7 @@ def main() -> None:
     set "INCLUDE={include_value}"
     set "LIB={lib_value}"
     """
-        (OUTPUT / f"setup_{target}.bat").write_text(SETUP)
+        write_text(OUTPUT / f"setup_{target}.bat", SETUP)
 
     print(f"Total downloaded: {total_download >> 20} MB")
     print("Done!")

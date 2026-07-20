@@ -2,7 +2,7 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from library.text_file import read_text_with_fallback
+from library.text_file import add_file_error_note, read_text_with_fallback
 
 INCLUDE_PATTERN = re.compile(r'^\s*@include\s+"([^"]+)"', re.IGNORECASE)
 CLASS_PATTERN = re.compile(
@@ -20,7 +20,10 @@ PROPERTY_NAME_PATTERN = re.compile(r"^\s*(?P<key>[A-Za-z_][A-Za-z0-9_]*)\s*\([^)
 
 
 class FgdParseError(ValueError):
-    pass
+    def __init__(self, message: str, line: int | None = None, column: int | None = None) -> None:
+        super().__init__(message)
+        self.line = line
+        self.column = column
 
 
 @dataclass
@@ -65,25 +68,29 @@ class FgdParser:
         return paths
 
     def _parse_file(self, path: Path) -> None:
-        lines = read_text_with_fallback(path).splitlines()
-        index = 0
-        while index < len(lines):
-            match = CLASS_PATTERN.match(lines[index])
-            if match is None:
-                index += 1
-                continue
+        try:
+            lines = read_text_with_fallback(path).splitlines()
+            index = 0
+            while index < len(lines):
+                match = CLASS_PATTERN.match(lines[index])
+                if match is None:
+                    index += 1
+                    continue
 
-            name = match.group("name")
-            bases = parse_base_names(match.group("header"))
-            body, next_index = self._collect_fgd_body(lines, index + 1)
-            properties, defaults = parse_fgd_properties(body)
-            if match.group(1).lower() == "extendclass" and name in self.classes:
-                self.classes[name].bases.extend(base for base in bases if base not in self.classes[name].bases)
-                self.classes[name].defaults.update(defaults)
-                self.classes[name].properties.update(properties)
-            else:
-                self.classes[name] = FgdClass(name=name, bases=bases, defaults=defaults, properties=properties)
-            index = next_index
+                name = match.group("name")
+                bases = parse_base_names(match.group("header"))
+                body, next_index = self._collect_fgd_body(lines, index + 1)
+                properties, defaults = parse_fgd_properties(body)
+                if match.group(1).lower() == "extendclass" and name in self.classes:
+                    self.classes[name].bases.extend(base for base in bases if base not in self.classes[name].bases)
+                    self.classes[name].defaults.update(defaults)
+                    self.classes[name].properties.update(properties)
+                else:
+                    self.classes[name] = FgdClass(name=name, bases=bases, defaults=defaults, properties=properties)
+                index = next_index
+        except FgdParseError as error:
+            add_file_error_note(error, path, "parse")
+            raise
 
     def _collect_fgd_body(self, lines: list[str], start: int) -> tuple[list[str], int]:
         body: list[str] = []
@@ -109,7 +116,7 @@ class FgdParser:
                 body.append(lines[index])
             index += 1
 
-        raise FgdParseError("FGD class block is missing a closing bracket")
+        raise FgdParseError("FGD class block is missing a closing bracket", line=len(lines), column=1)
 
     def _resolve_definition(self, name: str, resolving: set[str]) -> FgdEntityDefinition:
         class_info = self.classes.get(name)

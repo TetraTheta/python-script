@@ -8,6 +8,8 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 from urllib.request import urlopen
 
+from library.text_file import add_file_error_note, print_exception
+
 
 class YoutubeThumbnailArgs(Namespace):
     input: str
@@ -73,7 +75,8 @@ def main() -> None:
             output_path.write_bytes(response.read())
         print(f"Downloaded: {output_path}")
     except OSError as error:
-        print(f"Download failed: {error}", file=sys.stderr)
+        add_file_error_note(error, output_path, "write")
+        print_exception(error)
         sys.exit(1)
 
 

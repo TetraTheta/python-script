@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from pathlib import Path
 
-from library.text_file import read_text_with_fallback
+from library.text_file import add_file_error_note, read_text_with_fallback
 
 
 @dataclass(frozen=True)
@@ -11,7 +11,10 @@ class KeyValueItem:
 
 
 class KeyValueParseError(ValueError):
-    pass
+    def __init__(self, message: str, line: int | None = None, column: int | None = None) -> None:
+        super().__init__(message)
+        self.line = line
+        self.column = column
 
 
 class KeyValueParser:
@@ -32,7 +35,7 @@ class KeyValueParser:
         line = self.text.count("\n", 0, self.index) + 1
         line_start = self.text.rfind("\n", 0, self.index) + 1
         column = self.index - line_start + 1
-        return KeyValueParseError(f"{message} at line {line}, column {column}")
+        return KeyValueParseError(f"{message} at line {line}, column {column}", line=line, column=column)
 
     def _parse_block(self, stop_at_closing_brace: bool) -> list[KeyValueItem]:
         items: list[KeyValueItem] = []
@@ -141,7 +144,11 @@ class ValveKeyValue:
 
     @classmethod
     def from_file(cls, path: Path) -> "ValveKeyValue":
-        return cls.from_text(read_text_with_fallback(path))
+        try:
+            return cls.from_text(read_text_with_fallback(path))
+        except KeyValueParseError as error:
+            add_file_error_note(error, path, "parse")
+            raise
 
     @classmethod
     def from_text(cls, text: str) -> "ValveKeyValue":

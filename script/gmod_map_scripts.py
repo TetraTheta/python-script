@@ -176,9 +176,8 @@ def main() -> None:
         lines.extend([f'print("[{cwd.name}] Registering sounds ({source.stem})... DONE")', ""])
         write_lua_file(output, "\n".join(lines))
         print(format_status("INFO", ConsoleColor.GREEN, f"Wrote '{output}'"))
-    except Exception as error:
-        print(format_status("ERROR", ConsoleColor.RED, str(error)), file=sys.stderr)
-        sys.exit(1)
+    except Exception:
+        raise
 
 
 def normalize_source_constant(value: str) -> str:

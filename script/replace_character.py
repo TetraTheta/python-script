@@ -2,9 +2,10 @@
 """텍스트 파일의 특정 문자열을 특수 문자로 변환하거나 역으로 되돌린다"""
 
 import re
-import sys
 from argparse import ArgumentParser, Namespace, RawDescriptionHelpFormatter
 from pathlib import Path
+
+from library.text_file import print_exception, read_text, write_text
 
 
 class ReplaceCharacterArgs(Namespace):
@@ -101,16 +102,16 @@ def transform_text_file(file_path: Path, reverse: bool = False) -> None:
         return
 
     try:
-        content = file_path.read_text(encoding="utf-8")
+        content = read_text(file_path, encoding="utf-8")
         new_content = restore_typographic_shortcuts(content) if reverse else replace_typographic_shortcuts(content)
 
         if content != new_content:
-            file_path.write_text(new_content, encoding="utf-8")
+            write_text(file_path, new_content, encoding="utf-8")
             print(f"Processed: {file_path}")
         else:
             print(f"No changes: {file_path}")
     except OSError as error:
-        print(f"Error processing {file_path}: {error}", file=sys.stderr)
+        print_exception(error)
 
 
 if __name__ == "__main__":

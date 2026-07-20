@@ -10,7 +10,7 @@ from time import perf_counter
 
 from library.cli import TerminalHelpFormatter
 from library.console import ConsoleColor, format_status
-from library.text_file import read_text_with_fallback, write_text
+from library.text_file import format_exception_message, print_exception, read_text_with_fallback, write_text
 from library.valve_fgd import FgdEntityDefinition, FgdParseError, FgdParser
 
 GMOD_BIN_PATH = Path(r"E:\Program Files\Steam\steamapps\common\GarrysMod\bin")
@@ -171,11 +171,12 @@ def main() -> None:
         definitions_by_class = FgdParser(fgd_path).parse_definitions()
     except (OSError, FgdParseError) as error:
         use_fgd_defaults = False
+        print_exception(error)
         print(
             format_status(
                 "WARN",
                 ConsoleColor.YELLOW,
-                f"FGD defaults are disabled because '{fgd_path}' could not be parsed: {error}",
+                f"FGD defaults are disabled because '{fgd_path}' could not be parsed: {format_exception_message(error)}",
             )
         )
 
@@ -251,8 +252,9 @@ def optimize_vmf(
     started_at = perf_counter()
     try:
         original_text = read_text_with_fallback(source)
-    except OSError as error:
-        return OptimizeResult(source, None, True, 0, 0, 0, f"Failed to read file: {error}")
+    except (OSError, UnicodeError) as error:
+        print_exception(error)
+        return OptimizeResult(source, None, True, 0, 0, 0, f"Failed to read file: {format_exception_message(error)}")
 
     lines = original_text.splitlines()
     total_lines = len(lines)
@@ -271,7 +273,8 @@ def optimize_vmf(
 
     try:
         write_text(output, output_text)
-    except OSError as error:
+    except (OSError, UnicodeError) as error:
+        print_exception(error)
         elapsed_ms = int((perf_counter() - started_at) * 1000)
         return OptimizeResult(
             source,
@@ -280,7 +283,7 @@ def optimize_vmf(
             total_lines,
             removed_lines,
             elapsed_ms,
-            f"Failed to write file: {error}",
+            f"Failed to write file: {format_exception_message(error)}",
             verbose_events,
         )
 
@@ -703,7 +706,7 @@ def write_log(results: list[OptimizeResult], options: OptimizerOptions) -> None:
             f"{status}: {result.source} -> {result.output} "
             f"removed={result.removed_lines} total={result.total_lines} elapsed_ms={result.elapsed_ms} {result.message}"
         )
-    Path(LOG_FILE_NAME).write_text("\n".join(lines) + "\n", encoding="utf-8")
+    write_text(Path(LOG_FILE_NAME), "\n".join(lines) + "\n", encoding="utf-8")
 
 
 if __name__ == "__main__":

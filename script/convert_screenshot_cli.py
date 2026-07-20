@@ -12,6 +12,8 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Literal, TypedDict, TypeGuard
 
+from library.text_file import write_text
+
 CropPosition = Literal["bottom", "center", "full"]
 GameName = Literal["none", "wuwa", "endfield"]
 OperationName = Literal[
@@ -225,8 +227,7 @@ def main() -> None:
                 job["crop_pos"] = args.crop_pos
 
             json_path = temp_dir / f"cs-{uuid.uuid4().hex}.json"
-            with json_path.open("w", encoding="utf-8") as file:
-                json.dump(job, file, indent=2)
+            write_text(json_path, json.dumps(job, indent=2), encoding="utf-8")
 
             command = [sys.executable, str(gui_script), str(json_path)]
             if sys.platform == "win32":

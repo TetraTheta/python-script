@@ -13,7 +13,7 @@ from shutil import move, rmtree
 from typing import Callable
 
 from library.console import ConsoleColor, format_status
-from library.text_file import read_text_with_fallback, write_text
+from library.text_file import print_exception, read_text_with_fallback, write_text
 
 
 class GmodMapAddonArgs(Namespace):
@@ -154,7 +154,7 @@ def main() -> None:
             content = content.replace('"SDK_VertexLitGeneric"', '"VertexLitGeneric"')
             write_text(vmt, content)
         except OSError as error:
-            print(format_status("ERROR", ConsoleColor.RED, f"Failed to process '{vmt}': {error}"))
+            print_exception(error)
 
     # gamemode 파일 생성
     gamemodes_dir = target / "gamemodes"
@@ -168,18 +168,23 @@ def main() -> None:
     print(format_status("INFO", ConsoleColor.GREEN, f"Creating Gamemode file ({safe_name}.txt)"))
     gamemode_txt = gamemodes_dir / safe_name / f"{safe_name}.txt"
     gamemode_txt.parent.mkdir(parents=True, exist_ok=True)
-    gamemode_txt.write_text(f""""{safe_name}"
+    write_text(
+        gamemode_txt,
+        f""""{safe_name}"
 {{
   "title" "{dir_name}"
   "maps" "{maps_str}"
   "menusystem" "0"
   "source" ""
 }}
-""")
+""",
+    )
 
     # addon.json 파일 생성
     print(format_status("INFO", ConsoleColor.GREEN, "Creating 'addon.json' file"))
-    (target / "addon.json").write_text(f"""{{
+    write_text(
+        target / "addon.json",
+        f"""{{
   "title": "{dir_name}",
   "type": "map",
   "tags": [
@@ -195,7 +200,8 @@ def main() -> None:
     "modelsrc/*",
   ]
 }}
-""")
+""",
+    )
 
     # 빈 폴더 정리
     print(format_status("INFO", ConsoleColor.GREEN, "Remove empty directories"))

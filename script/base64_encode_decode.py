@@ -10,6 +10,7 @@ from subprocess import CalledProcessError, run
 
 from library.cli import TerminalHelpFormatter
 from library.console import ConsoleColor, format_status
+from library.text_file import add_file_error_note, print_exception
 
 
 class Base64Args(Namespace):
@@ -62,7 +63,8 @@ def main() -> None:
             content = input_path.read_bytes() if input_path.is_file() else args.input.encode()
             encoded = base64.b64encode(content).decode()
         except OSError as error:
-            print(format_status("ERROR", ConsoleColor.RED, f"Failed to encode: {error}"), file=sys.stderr)
+            add_file_error_note(error, input_path, "read")
+            print_exception(error)
             sys.exit(1)
 
         print(encoded)
@@ -87,7 +89,8 @@ def main() -> None:
             Path(filename).write_bytes(decoded)
             print(format_status("INFO", ConsoleColor.GREEN, f"Binary file written to './{filename}'"), file=sys.stderr)
             return
-        except OSError:
+        except OSError as error:
+            add_file_error_note(error, Path(filename), "write")
             # 사용자 폴더에 파일 생성
             fallback_path = Path.home() / filename
             try:
@@ -97,9 +100,8 @@ def main() -> None:
                     file=sys.stderr,
                 )
             except OSError as error:
-                print(
-                    format_status("ERROR", ConsoleColor.RED, f"Failed to write decoded data: {error}"), file=sys.stderr
-                )
+                add_file_error_note(error, fallback_path, "write")
+                print_exception(error)
                 sys.exit(1)
 
 

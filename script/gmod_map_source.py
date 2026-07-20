@@ -7,19 +7,25 @@
 import csv
 import sys
 from argparse import ArgumentParser, Namespace
+from io import StringIO
 from pathlib import Path
 
 from library.console import ConsoleColor, format_status
-from library.text_file import read_text_with_fallback, write_text
+from library.text_file import add_file_error_note, print_exception, read_text, read_text_with_fallback, write_text
 
 DATA_DIR = Path(__file__).with_name("library") / "data"
 
 
 def load_map_source_pairs(filename: str) -> tuple[tuple[str, str], ...]:
-    with (DATA_DIR / filename).open(newline="", encoding="utf-8") as file:
-        reader = csv.reader(file)
+    path = DATA_DIR / filename
+    file = StringIO(read_text(path, encoding="utf-8"), newline="")
+    reader = csv.reader(file)
+    try:
         next(reader, None)
         return tuple((old, new) for old, new in reader)
+    except csv.Error as error:
+        add_file_error_note(error, path, "parse", line=reader.line_num or None, column=1)
+        raise
 
 
 INPUT_GENERIC = load_map_source_pairs("mapsrc_input.csv")
@@ -72,7 +78,7 @@ def normalize_vmf_entities(target: Path) -> None:
             content = content.replace(f"{separator}{old}{separator}", f"{separator}{new}{separator}")
         write_text(target, content)
     except OSError as error:
-        print(format_status("ERROR", ConsoleColor.RED, f"Failed to process '{target}': {error}"))
+        print_exception(error)
 
 
 if __name__ == "__main__":
