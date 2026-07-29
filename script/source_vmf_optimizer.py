@@ -418,12 +418,16 @@ def process_special_line(
         return LineAction()
     key, value = keyvalue
 
-    # versioninfo.mapversion, world.mapversion, world.comment 제거
+    # versioninfo.mapversion, versioninfo.editorbuild, world.mapversion, world.comment 제거
     block = contexts[index].top_level_name if index < len(contexts) else None
     if block == "versioninfo":
         if key == "mapversion":
             return LineAction(
                 remove=True, verbose_events=make_verbose_events(contexts, index, 'removed versioninfo "mapversion"')
+            )
+        elif key == "editorbuild":
+            return LineAction(
+                remove=True, verbose_events=make_verbose_events(contexts, index, 'removed versioninfo "editorbuild"')
             )
     elif block == "world":
         if key == "mapversion":
