@@ -2,6 +2,7 @@
 """텍스트 파일의 특정 문자열을 특수 문자로 변환하거나 역으로 되돌린다"""
 
 import re
+import sys
 from argparse import ArgumentParser, Namespace, RawDescriptionHelpFormatter
 from pathlib import Path
 
