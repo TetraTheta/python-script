@@ -10,8 +10,9 @@ from time import perf_counter
 
 from library.cli import TerminalHelpFormatter
 from library.console import ConsoleColor, format_status
-from library.text_file import format_exception_message, print_exception, read_text_with_fallback, write_text
+from library.text_file import format_exception_message, print_exception, write_text
 from library.valve_fgd import FgdEntityDefinition, FgdParseError, FgdParser
+from library.valve_vmf import ValveVmf, VmfBlock, VmfKeyValue
 
 GMOD_BIN_PATH = Path(r"E:\Program Files\Steam\steamapps\common\GarrysMod\bin")
 DEFAULT_FGD_PATH = GMOD_BIN_PATH / ("sctools.fgd" if (GMOD_BIN_PATH / "sctools.fgd").exists() else "garrysmod.fgd")
@@ -26,11 +27,20 @@ DEFAULT_FORCE = False
 DEFAULT_REMOVE_UNKNOWN_KEYS = False
 LOG_FILE_NAME = "source_vmf_optimizer.log"
 OPTIMIZED_TAG = "optimized{}"
+SANITIZED_TAG = "sanitized{}"
+VMF_TAG_ORDER = (OPTIMIZED_TAG, SANITIZED_TAG)
 ALWAYS_KEEP_ENTITY_KEYS = {"classname", "id", "origin"}
 
-VMF_KEYVALUE_PATTERN = re.compile(r'^\s*"(?P<key>[^"]+)"\s+"(?P<value>(?:\\.|[^"])*)"\s*$')
 BSPSOURCE_COMMENT_PATTERN = re.compile(r"^Decompiled by BSPSource(?: v\d+(?:\.\d+)*)?(?: from .+)?$")
 
+# VMF에서 제거하는 대상:
+# - Hammer++ 보조 블록: vertices_plus(선택), palette_plus, colorcorrection_plus,
+#   light_plus, postprocess_plus, bgimages_plus
+# - 버전/디컴파일 흔적: versioninfo.mapversion, versioninfo.editorbuild,
+#   world.mapversion, BSPSource world.comment
+# - 브러시 기본값: rotation, smoothing_groups, elevation, subdiv,
+#   lightmapscale(선택)
+# - 엔티티 기본값: FGD 기본값, FGD에 없는 최상위 엔티티 키(선택)
 BRUSH_DEFAULTS = {
     "rotation": "0",
     "smoothing_groups": "0",
@@ -83,27 +93,6 @@ class OptimizeResult:
     removed_lines: int
     elapsed_ms: int
     message: str = ""
-    verbose_events: list[str] = field(default_factory=list)
-
-
-@dataclass
-class VmfBlockContext:
-    name: str
-    block_id: str | None = None
-    classname: str | None = None
-
-
-@dataclass(frozen=True)
-class VmfContext:
-    description: str
-    top_level_name: str | None
-
-
-@dataclass(frozen=True)
-class LineAction:
-    remove: bool = False
-    removed_lines: int = 0
-    skip_to: int | None = None
     verbose_events: list[str] = field(default_factory=list)
 
 
@@ -251,24 +240,23 @@ def optimize_vmf(
 ) -> OptimizeResult:
     started_at = perf_counter()
     try:
-        original_text = read_text_with_fallback(source)
+        vmf = ValveVmf.from_file(source, VMF_TAG_ORDER)
     except (OSError, UnicodeError) as error:
         print_exception(error)
         return OptimizeResult(source, None, True, 0, 0, 0, f"Failed to read file: {format_exception_message(error)}")
 
-    lines = original_text.splitlines()
-    total_lines = len(lines)
-    if lines and lines[0].strip() == OPTIMIZED_TAG:
+    total_lines = vmf.line_count
+    if OPTIMIZED_TAG in vmf.tags:
         if not options.force:
             return OptimizeResult(source, None, True, total_lines, 0, 0, "Already optimized")
-        lines = lines[1:]
-        total_lines -= 1
 
-    output_lines, removed_lines, verbose_events = optimize_lines(lines, definitions_by_class, options)
+    removed_lines, verbose_events = optimize_vmf_file(vmf, definitions_by_class, options)
     if options.add_optimized_tag:
-        output_lines.insert(0, OPTIMIZED_TAG)
+        vmf.tags.add(OPTIMIZED_TAG)
+    else:
+        vmf.tags.discard(OPTIMIZED_TAG)
 
-    output_text = format_output(output_lines, options.remove_whitespace)
+    output_text = vmf.render_text(options.remove_whitespace)
     output = source if options.inplace else source.with_name(f"{source.stem}{options.suffix}{source.suffix}")
 
     try:
@@ -291,382 +279,160 @@ def optimize_vmf(
     return OptimizeResult(source, output, False, total_lines, removed_lines, elapsed_ms, verbose_events=verbose_events)
 
 
-def optimize_lines(
-    lines: list[str],
+def optimize_vmf_file(
+    vmf: ValveVmf,
     definitions_by_class: dict[str, FgdEntityDefinition],
     options: OptimizerOptions,
-) -> tuple[list[str], int, list[str]]:
-    output: list[str] = []
+) -> tuple[int, list[str]]:
     verbose_events: list[str] = []
-    contexts = build_vmf_contexts(lines, options.verbose)
     removed_lines = 0
-    index = 0
 
-    while index < len(lines):
-        line = lines[index]
-        if line.strip() == "entity" and index + 1 < len(lines) and lines[index + 1].strip() == "{":
-            block, next_index = collect_vmf_block(lines, index)
-            optimized_block, removed, events = optimize_entity_block(block, definitions_by_class, options)
-            output.extend(optimized_block)
+    removed, events = remove_special_blocks(vmf, options)
+    removed_lines += removed
+    verbose_events.extend(events)
+
+    for keyvalue in list(vmf.each_keyvalue()):
+        if should_remove_top_level_key(keyvalue) or should_remove_brush_default(keyvalue, options):
+            removed_lines += keyvalue.line_count
+            verbose_events.extend(
+                make_verbose_events(
+                    options.verbose,
+                    keyvalue,
+                    f'removed "{keyvalue.key}"="{keyvalue.value}"',
+                )
+            )
+            keyvalue.remove()
+
+    for entity in vmf.blocks("entity"):
+        removed, events = optimize_entity_block(entity, definitions_by_class, options)
+        removed_lines += removed
+        verbose_events.extend(events)
+
+    return removed_lines, verbose_events
+
+
+def remove_special_blocks(block: VmfBlock, options: OptimizerOptions) -> tuple[int, list[str]]:
+    removed_lines = 0
+    verbose_events: list[str] = []
+    for child in list(block.children):
+        if not isinstance(child, VmfBlock):
+            continue
+        if should_remove_block(child, options):
+            removed = child.line_count
             removed_lines += removed
-            verbose_events.extend(events)
-            index = next_index
+            verbose_events.extend(
+                make_verbose_events(
+                    options.verbose,
+                    child,
+                    f"removed Hammer++ {child.name} block ({removed} lines)",
+                )
+            )
+            child.remove()
             continue
-
-        action = process_special_line(lines, index, options, contexts)
-        if action.skip_to is not None:
-            removed_lines += action.removed_lines
-            verbose_events.extend(action.verbose_events)
-            index = action.skip_to
-            continue
-        if action.remove:
-            removed_lines += 1
-            verbose_events.extend(action.verbose_events)
-        else:
-            output.append(line)
-        index += 1
-
-    return output, removed_lines, verbose_events
+        removed, events = remove_special_blocks(child, options)
+        removed_lines += removed
+        verbose_events.extend(events)
+    return removed_lines, verbose_events
 
 
-def process_special_line(
-    lines: list[str],
-    index: int,
-    options: OptimizerOptions,
-    contexts: list[VmfContext],
-) -> LineAction:
-    if index >= len(lines):
-        return LineAction()
+def should_remove_block(block: VmfBlock, options: OptimizerOptions) -> bool:
+    removable = {"palette_plus", "colorcorrection_plus", "light_plus", "postprocess_plus", "bgimages_plus"}
+    if options.remove_vertices_plus:
+        removable.add("vertices_plus")
+    return (block.name or "").lower() in removable
 
-    stripped = lines[index].strip()
 
-    # vertices_plus 제거 (선택)
-    if options.remove_vertices_plus and stripped == "vertices_plus":
-        next_index = collect_named_vmf_block(lines, index)
-        if next_index is not None:
-            removed_lines = next_index - index
-            return LineAction(
-                removed_lines=removed_lines,
-                skip_to=next_index,
-                verbose_events=make_verbose_events(
-                    contexts, index, f"removed Hammer++ vertices_plus block ({removed_lines} lines)"
-                ),
-            )
-    # palette_plus 제거
-    if stripped == "palette_plus":
-        next_index = collect_named_vmf_block(lines, index)
-        if next_index is not None:
-            removed_lines = next_index - index
-            return LineAction(
-                removed_lines=removed_lines,
-                skip_to=next_index,
-                verbose_events=make_verbose_events(
-                    contexts, index, f"removed Hammer++ palette_plus block ({removed_lines} lines)"
-                ),
-            )
-    # colorcorrection_plus 제거
-    if stripped == "colorcorrection_plus":
-        next_index = collect_named_vmf_block(lines, index)
-        if next_index is not None:
-            removed_lines = next_index - index
-            return LineAction(
-                removed_lines=removed_lines,
-                skip_to=next_index,
-                verbose_events=make_verbose_events(
-                    contexts, index, f"removed Hammer++ colorcorrection_plus block ({removed_lines} lines)"
-                ),
-            )
-    # light_plus 제거
-    if stripped == "light_plus":
-        next_index = collect_named_vmf_block(lines, index)
-        if next_index is not None:
-            removed_lines = next_index - index
-            return LineAction(
-                removed_lines=removed_lines,
-                skip_to=next_index,
-                verbose_events=make_verbose_events(
-                    contexts, index, f"removed Hammer++ light_plus block ({removed_lines} lines)"
-                ),
-            )
-    # postprocess_plus 제거
-    if stripped == "postprocess_plus":
-        next_index = collect_named_vmf_block(lines, index)
-        if next_index is not None:
-            removed_lines = next_index - index
-            return LineAction(
-                removed_lines=removed_lines,
-                skip_to=next_index,
-                verbose_events=make_verbose_events(
-                    contexts, index, f"removed Hammer++ postprocess_plus block ({removed_lines} lines)"
-                ),
-            )
-    # bgimages_plus 제거
-    if stripped == "bgimages_plus":
-        next_index = collect_named_vmf_block(lines, index)
-        if next_index is not None:
-            removed_lines = next_index - index
-            return LineAction(
-                removed_lines=removed_lines,
-                skip_to=next_index,
-                verbose_events=make_verbose_events(
-                    contexts, index, f"removed Hammer++ bgimages_plus block ({removed_lines} lines)"
-                ),
-            )
-
-    keyvalue = parse_vmf_keyvalue(stripped)
-    if keyvalue is None:
-        return LineAction()
-    key, value = keyvalue
-
-    # versioninfo.mapversion, versioninfo.editorbuild, world.mapversion, world.comment 제거
-    block = contexts[index].top_level_name if index < len(contexts) else None
-    if block == "versioninfo":
-        if key == "mapversion":
-            return LineAction(
-                remove=True, verbose_events=make_verbose_events(contexts, index, 'removed versioninfo "mapversion"')
-            )
-        elif key == "editorbuild":
-            return LineAction(
-                remove=True, verbose_events=make_verbose_events(contexts, index, 'removed versioninfo "editorbuild"')
-            )
-    elif block == "world":
-        if key == "mapversion":
-            return LineAction(
-                remove=True, verbose_events=make_verbose_events(contexts, index, 'removed world "mapversion"')
-            )
-        elif key == "comment" and BSPSOURCE_COMMENT_PATTERN.fullmatch(value):
-            return LineAction(
-                remove=True, verbose_events=make_verbose_events(contexts, index, "removed BSPSource comment")
-            )
-
-    # 기본값 제거
-    defaults = BRUSH_LIGHTMAP_DEFAULTS if options.remove_lightmap else BRUSH_DEFAULTS
-    if defaults.get(key) == value:
-        return LineAction(
-            remove=True,
-            verbose_events=make_verbose_events(
-                contexts,
-                index,
-                f'removed brush default "{key}"="{value}"',
-            ),
+def should_remove_top_level_key(keyvalue: VmfKeyValue) -> bool:
+    block = keyvalue.parent
+    if block is None or block.parent is None or block.parent.name is not None:
+        return False
+    block_name = (block.name or "").lower()
+    key = keyvalue.key.lower()
+    if block_name == "versioninfo":
+        return key in {"mapversion", "editorbuild"}
+    if block_name == "world":
+        return key == "mapversion" or (
+            key == "comment" and BSPSOURCE_COMMENT_PATTERN.fullmatch(keyvalue.value) is not None
         )
+    return False
 
-    return LineAction()
+
+def should_remove_brush_default(keyvalue: VmfKeyValue, options: OptimizerOptions) -> bool:
+    defaults = BRUSH_LIGHTMAP_DEFAULTS if options.remove_lightmap else BRUSH_DEFAULTS
+    return defaults.get(keyvalue.key.lower()) == keyvalue.value
 
 
 def optimize_entity_block(
-    block: list[str],
+    entity: VmfBlock,
     definitions_by_class: dict[str, FgdEntityDefinition],
     options: OptimizerOptions,
-) -> tuple[list[str], int, list[str]]:
-    classname = find_classname(block)
-    definition = definitions_by_class.get(classname.lower()) if classname and options.use_fgd_defaults else None
+) -> tuple[int, list[str]]:
+    classname = entity.key("classname")
+    definition = (
+        definitions_by_class.get(classname.value.lower())
+        if classname is not None and options.use_fgd_defaults
+        else None
+    )
     defaults = definition.defaults if definition is not None else {}
     properties = definition.properties if definition is not None else set()
-    output: list[str] = []
     verbose_events: list[str] = []
-    contexts = build_vmf_contexts(block, include_description=options.verbose)
     removed_lines = 0
-    index = 0
-    depth = 0
 
-    while index < len(block):
-        stripped = block[index].strip()
-        current_depth = depth
-        if stripped == "{":
-            depth += 1
-        elif stripped == "}":
-            depth = max(0, depth - 1)
-
-        action = process_special_line(block, index, options, contexts)
-        if action.skip_to is not None:
-            removed_lines += action.removed_lines
-            verbose_events.extend(action.verbose_events)
-            index = action.skip_to
-            continue
-
-        line = block[index]
-        keyvalue = parse_vmf_keyvalue(line.strip())
-        if keyvalue is not None:
-            key, value = keyvalue
-            key_lower = key.lower()
-            if key_lower != "classname" and defaults.get(key_lower) == value:
-                removed_lines += 1
-                verbose_events.extend(make_verbose_events(contexts, index, f'removed FGD default "{key}"="{value}"'))
-                index += 1
-                continue
-            if (
-                options.remove_unknown_keys
-                and options.use_fgd_defaults
-                and definition is not None
-                and current_depth == 1
-                and key_lower not in properties
-                and key_lower not in ALWAYS_KEEP_ENTITY_KEYS
-            ):
-                removed_lines += 1
-                verbose_events.extend(
-                    make_verbose_events(contexts, index, f'removed FGD-unknown key "{key}"="{value}"')
+    for keyvalue in list(entity.each_keyvalue()):
+        key_lower = keyvalue.key.lower()
+        if key_lower != "classname" and defaults.get(key_lower) == keyvalue.value:
+            removed_lines += keyvalue.line_count
+            verbose_events.extend(
+                make_verbose_events(
+                    options.verbose,
+                    keyvalue,
+                    f'removed FGD default "{keyvalue.key}"="{keyvalue.value}"',
                 )
-                index += 1
-                continue
+            )
+            keyvalue.remove()
 
-        if action.remove:
-            removed_lines += 1
-            verbose_events.extend(action.verbose_events)
-        else:
-            output.append(line)
-        index += 1
+    if not (options.remove_unknown_keys and options.use_fgd_defaults and definition is not None):
+        return removed_lines, verbose_events
 
-    return output, removed_lines, verbose_events
+    for keyvalue in list(entity.keys()):
+        key_lower = keyvalue.key.lower()
+        if key_lower not in properties and key_lower not in ALWAYS_KEEP_ENTITY_KEYS:
+            removed_lines += keyvalue.line_count
+            verbose_events.extend(
+                make_verbose_events(
+                    options.verbose,
+                    keyvalue,
+                    f'removed FGD-unknown key "{keyvalue.key}"="{keyvalue.value}"',
+                )
+            )
+            keyvalue.remove()
 
-
-def collect_vmf_block(lines: list[str], start: int) -> tuple[list[str], int]:
-    block: list[str] = []
-    depth = 0
-    index = start
-    seen_open = False
-
-    while index < len(lines):
-        line = lines[index]
-        block.append(line)
-        stripped = line.strip()
-        if stripped == "{":
-            depth += 1
-            seen_open = True
-        elif stripped == "}":
-            depth -= 1
-            if seen_open and depth <= 0:
-                return block, index + 1
-        index += 1
-
-    return block, index
+    return removed_lines, verbose_events
 
 
-def collect_named_vmf_block(lines: list[str], start: int) -> int | None:
-    if start + 1 >= len(lines) or lines[start + 1].strip() != "{":
-        return None
-
-    depth = 0
-    index = start + 1
-    while index < len(lines):
-        stripped = lines[index].strip()
-        if stripped == "{":
-            depth += 1
-        elif stripped == "}":
-            depth -= 1
-            if depth <= 0:
-                return index + 1
-        index += 1
-
-    return None
-
-
-def make_verbose_events(contexts: list[VmfContext], index: int, detail: str) -> list[str]:
-    if index >= len(contexts) or not contexts[index].description:
+def make_verbose_events(verbose: bool, node: VmfBlock | VmfKeyValue, detail: str) -> list[str]:
+    if not verbose:
         return []
-    return [make_verbose_event(contexts, index, detail)]
+    return [f"{format_vmf_context(node)}: {detail}"]
 
 
-def make_verbose_event(contexts: list[VmfContext], index: int, detail: str) -> str:
-    context = contexts[index].description if index < len(contexts) else ""
-    return f"{context}: {detail}" if context else detail
-
-
-def build_vmf_contexts(lines: list[str], include_description: bool) -> list[VmfContext]:
-    def current_context(stack: list[VmfBlockContext]) -> VmfContext:
-        description = format_vmf_context(stack) if include_description else ""
-        top_level_name = stack[0].name if stack else None
-        return VmfContext(description, top_level_name)
-
-    stack: list[VmfBlockContext] = []
-    pending_name: str | None = None
-    contexts: list[VmfContext] = []
-
-    for line in lines:
-        stripped = line.strip()
-        if not stripped:
-            contexts.append(current_context(stack))
-            continue
-        if stripped == "{":
-            name = pending_name or "block"
-            stack.append(VmfBlockContext(name))
-            pending_name = None
-            contexts.append(current_context(stack))
-            continue
-        if stripped == "}":
-            contexts.append(current_context(stack))
-            if stack:
-                stack.pop()
-            pending_name = None
-            continue
-
-        contexts.append(current_context(stack))
-        keyvalue = parse_vmf_keyvalue(stripped)
-        if keyvalue is not None:
-            key, value = keyvalue
-            if stack:
-                if key.lower() == "id":
-                    stack[-1].block_id = value
-                elif key.lower() == "classname":
-                    stack[-1].classname = value
-            pending_name = None
-            continue
-
-        pending_name = stripped
-
-    return contexts
-
-
-def format_vmf_context(stack: list[VmfBlockContext]) -> str:
+def format_vmf_context(node: VmfBlock | VmfKeyValue) -> str:
     parts: list[str] = []
-    for context in stack:
-        label = context.name
-        if context.block_id is not None:
-            label = f"{label} id={context.block_id}"
-        if context.classname is not None:
-            label = f"{label} classname={context.classname}"
+    block = node if isinstance(node, VmfBlock) else node.parent
+    stack: list[VmfBlock] = []
+    while block is not None and block.name is not None:
+        stack.append(block)
+        block = block.parent
+    for item in reversed(stack):
+        label = item.name or "block"
+        block_id = item.key("id")
+        classname = item.key("classname")
+        if block_id is not None:
+            label = f"{label} id={block_id.value}"
+        if classname is not None:
+            label = f"{label} classname={classname.value}"
         parts.append(label)
-    return " > ".join(parts)
-
-
-def find_classname(lines: list[str]) -> str | None:
-    for line in lines:
-        keyvalue = parse_vmf_keyvalue(line.strip())
-        if keyvalue is None:
-            continue
-        key, value = keyvalue
-        if key.lower() == "classname":
-            return value
-    return None
-
-
-def parse_vmf_keyvalue(line: str) -> tuple[str, str] | None:
-    match = VMF_KEYVALUE_PATTERN.match(line)
-    if match is None:
-        return None
-    return match.group("key"), match.group("value")
-
-
-def format_output(lines: list[str], remove_whitespace: bool) -> str:
-    if remove_whitespace:
-        if lines and lines[0] == OPTIMIZED_TAG:
-            return f"{OPTIMIZED_TAG}\n{''.join(remove_extra_chars(line) for line in lines[1:])}"
-        return "".join(remove_extra_chars(line) for line in lines)
-    return "\n".join(lines) + "\n"
-
-
-def remove_extra_chars(line: str) -> str:
-    result: list[str] = []
-    index = 0
-    while index < len(line):
-        if line[index : index + 3] == '" "':
-            result.append('""')
-            index += 3
-            continue
-        if line[index] not in "\r\n\t":
-            result.append(line[index])
-        index += 1
-    return "".join(result)
+    return " > ".join(parts) or node.path
 
 
 def print_result(result: OptimizeResult) -> None:
