@@ -7,13 +7,27 @@ import re
 import stat
 import sys
 from argparse import ArgumentParser, Namespace
+from collections.abc import Callable
 from fnmatch import fnmatch
 from pathlib import Path
 from shutil import move, rmtree
-from typing import Callable
 
 from library.console import ConsoleColor, format_status
-from library.text_file import print_exception, read_text_with_fallback, write_text
+from library.text_file import (
+    normalize_newlines,
+    print_exception,
+    read_text_with_fallback,
+    write_text,
+)
+
+SDK_SHADER_REPLACEMENTS = (
+    (re.compile("SDK_LightmappedGeneric", re.IGNORECASE), "LightmappedGeneric"),
+    (re.compile("SDK_Sprite", re.IGNORECASE), "Sprite"),
+    (re.compile("SDK_VertexLitGeneric", re.IGNORECASE), "VertexLitGeneric"),
+)
+QUOTED_TEXT_PATTERN = re.compile(r'"([^"]*)"')
+QUOTED_WHITESPACE_PATTERN = re.compile(r"[\t ]+")
+NON_CRLF_NEWLINE_PATTERN = re.compile(r"(?<!\r)\n|\r(?!\n)")
 
 
 class GmodMapAddonArgs(Namespace):
@@ -120,7 +134,7 @@ def main() -> None:
         path = target.joinpath(*Path(name).parts).resolve()
         if path.exists() and path.is_dir():
             print(format_status("REMOVE", ConsoleColor.YELLOW, str(path)))
-            rmtree(path, onerror=retry_after_remove_readonly)
+            rmtree(path, onexc=retry_after_remove_readonly)
 
     print(format_status("INFO", ConsoleColor.GREEN, "Remove files"))
     remove_files_matching_patterns(
@@ -149,10 +163,9 @@ def main() -> None:
         try:
             remove_readonly(vmt)
             content = read_text_with_fallback(vmt)
-            content = content.replace('"SDK_LightmappedGeneric"', '"LightmappedGeneric"')
-            content = content.replace('"SDK_Sprite"', '"Sprite"')
-            content = content.replace('"SDK_VertexLitGeneric"', '"VertexLitGeneric"')
-            write_text(vmt, content)
+            normalized_content = normalize_vmt_content(content)
+            if content_needs_vmt_update(content, normalized_content):
+                write_text(vmt, normalized_content, line_ending="\r\n")
         except OSError as error:
             print_exception(error)
 
@@ -278,10 +291,29 @@ def remove_readonly(path: Path) -> None:
 def retry_after_remove_readonly(
     func: Callable[[str], object],
     path: str,
-    _: tuple[type[BaseException], BaseException, object],
+    _: BaseException,
 ) -> None:
     remove_readonly(Path(path))
     func(path)
+
+
+def normalize_vmt_content(content: str) -> str:
+    normalized = normalize_newlines(content)
+    for pattern, replacement in SDK_SHADER_REPLACEMENTS:
+        normalized = pattern.sub(replacement, normalized)
+    normalized = "\n".join(line for line in normalized.splitlines() if line.strip())
+    return QUOTED_TEXT_PATTERN.sub(normalize_quoted_whitespace, normalized)
+
+
+def normalize_quoted_whitespace(match: re.Match[str]) -> str:
+    return f'"{QUOTED_WHITESPACE_PATTERN.sub(" ", match.group(1))}"'
+
+
+def content_needs_vmt_update(content: str, normalized_content: str) -> bool:
+    return (
+        normalize_newlines(content) != normalized_content
+        or NON_CRLF_NEWLINE_PATTERN.search(content) is not None
+    )
 
 
 def sanitize_source_name(name: str) -> str:
