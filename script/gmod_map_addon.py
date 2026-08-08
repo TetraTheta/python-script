@@ -28,6 +28,84 @@ SDK_SHADER_REPLACEMENTS = (
 QUOTED_TEXT_PATTERN = re.compile(r'"([^"]*)"')
 QUOTED_WHITESPACE_PATTERN = re.compile(r"[\t ]+")
 NON_CRLF_NEWLINE_PATTERN = re.compile(r"(?<!\r)\n|\r(?!\n)")
+GMAD_ADDON_WHITELIST = (
+    "lua/*.lua",
+    "scenes/*.vcd",
+    "particles/*.pcf",
+    "resource/fonts/*.ttf",
+    "scripts/vehicles/*.txt",
+    "resource/localization/*/*.properties",
+    "maps/*.bsp",
+    "maps/*.lmp",
+    "maps/*.nav",
+    "maps/*.ain",
+    "maps/thumb/*.png",
+    "sound/*.wav",
+    "sound/*.mp3",
+    "sound/*.ogg",
+    "materials/*.vmt",
+    "materials/*.vtf",
+    "materials/*.png",
+    "materials/*.jpg",
+    "materials/*.jpeg",
+    "materials/colorcorrection/*.raw",
+    "models/*.mdl",
+    "models/*.phy",
+    "models/*.ani",
+    "models/*.vvd",
+    "models/*.vtx",
+    "!models/*.sw.vtx",
+    "!models/*.360.vtx",
+    "!models/*.xbox.vtx",
+    "gamemodes/*/*.txt",
+    "!gamemodes/*/*/*.txt",
+    "gamemodes/*/*.fgd",
+    "!gamemodes/*/*/*.fgd",
+    "gamemodes/*/logo.png",
+    "gamemodes/*/icon24.png",
+    "gamemodes/*/gamemode/*.lua",
+    "gamemodes/*/entities/effects/*.lua",
+    "gamemodes/*/entities/weapons/*.lua",
+    "gamemodes/*/entities/entities/*.lua",
+    "gamemodes/*/backgrounds/*.png",
+    "gamemodes/*/backgrounds/*.jpg",
+    "gamemodes/*/backgrounds/*.jpeg",
+    "gamemodes/*/content/models/*.mdl",
+    "gamemodes/*/content/models/*.phy",
+    "gamemodes/*/content/models/*.ani",
+    "gamemodes/*/content/models/*.vvd",
+    "gamemodes/*/content/models/*.vtx",
+    "!gamemodes/*/content/models/*.sw.vtx",
+    "!gamemodes/*/content/models/*.360.vtx",
+    "!gamemodes/*/content/models/*.xbox.vtx",
+    "gamemodes/*/content/materials/*.vmt",
+    "gamemodes/*/content/materials/*.vtf",
+    "gamemodes/*/content/materials/*.png",
+    "gamemodes/*/content/materials/*.jpg",
+    "gamemodes/*/content/materials/*.jpeg",
+    "gamemodes/*/content/materials/colorcorrection/*.raw",
+    "gamemodes/*/content/scenes/*.vcd",
+    "gamemodes/*/content/particles/*.pcf",
+    "gamemodes/*/content/resource/fonts/*.ttf",
+    "gamemodes/*/content/scripts/vehicles/*.txt",
+    "gamemodes/*/content/resource/localization/*/*.properties",
+    "gamemodes/*/content/maps/*.bsp",
+    "gamemodes/*/content/maps/*.nav",
+    "gamemodes/*/content/maps/*.ain",
+    "gamemodes/*/content/maps/thumb/*.png",
+    "gamemodes/*/content/sound/*.wav",
+    "gamemodes/*/content/sound/*.mp3",
+    "gamemodes/*/content/sound/*.ogg",
+    "data_static/*.txt",
+    "data_static/*.dat",
+    "data_static/*.json",
+    "data_static/*.xml",
+    "data_static/*.csv",
+    "shaders/fxc/*.vcs",
+)
+TOP_LEVEL_CUSTOM_FILE_POLICY_DIRS = {"resource", "scripts"}
+PRESERVED_EMPTY_DIRS = {"resource", "scripts"}
+SCRIPT_REMOVE_PATTERNS = ("*manifest.txt", "chapterbackgrounds.txt")
 
 
 class GmodMapAddonArgs(Namespace):
@@ -137,25 +215,12 @@ def main() -> None:
             rmtree(path, onexc=retry_after_remove_readonly)
 
     print(format_status("INFO", ConsoleColor.GREEN, "Remove files"))
-    remove_files_matching_patterns(
-        target,
-        [
-            "*.bak",
-            "*.cache",
-            "*.db",
-            "*.image",
-            "*.raw",
-            "*.tga",
-            "*.sw.vtx",
-            "*.xbox.vtx",
-            "desktop.ini",
-        ],
+    remove_files_by_policy(target, should_remove_by_gmad_whitelist(target))
+    remove_files_by_policy(target / "resource", lambda path: not fnmatch(path.name.lower(), "*.txt"))
+    remove_files_by_policy(
+        target / "scripts",
+        lambda path: any(fnmatch(path.name.lower(), pattern) for pattern in SCRIPT_REMOVE_PATTERNS),
     )
-    remove_files_except_patterns(target / "materials", ["*.vmt", "*.vtf"])
-    remove_files_matching_patterns(target / "models", ["*.jpg", "*.png", "*.qc", "*.smd", "*.vmt", "*.vtf"])
-    remove_files_matching_patterns(target / "particles", ["particles_manifest.txt"])
-    remove_files_except_patterns(target / "resource", ["*.txt"])
-    remove_files_matching_patterns(target / "scripts", ["*manifest.txt", "chapterbackgrounds.txt"])
 
     # MapBase 전용 셰이더명을 일반 Source Engine/GMod 셰이더명으로 치환
     print(format_status("INFO", ConsoleColor.GREEN, "Modifying material files"))
@@ -208,9 +273,18 @@ def main() -> None:
     "*.log",
     "*.vmf",
     "*.vmx",
+    ".ignore/*",
+    "AGENTS.md",
+    "README.md",
+    "fgd/*",
+    "lua/.ignore/*",
+    "lua/weapons/.ignore/*",
     "maps_original/*",
     "mapsrc/*",
+    "models/.ignore/*",
     "modelsrc/*",
+    "thumb.jpg",
+    "thumb.png"
   ]
 }}
 """,
@@ -237,6 +311,8 @@ def remove_empty_directory(current: Path, root: Path) -> None:
                 remove_empty_directory(child, root)
 
         if current != root:
+            if current.parent == root and current.name in PRESERVED_EMPTY_DIRS:
+                return
             try:
                 current.rmdir()
                 print(
@@ -254,12 +330,11 @@ def remove_empty_directory(current: Path, root: Path) -> None:
         pass
 
 
-def remove_files_except_patterns(target: Path, patterns: list[str]) -> None:
+def remove_files_by_policy(target: Path, should_remove: Callable[[Path], bool]) -> None:
     for path in target.rglob("*"):
         if not path.is_file():
             continue
-        keep = any(fnmatch(path.name.lower(), pattern) for pattern in patterns)
-        if keep:
+        if not should_remove(path):
             continue
         print(format_status("REMOVE", ConsoleColor.YELLOW, str(path)))
         try:
@@ -269,17 +344,26 @@ def remove_files_except_patterns(target: Path, patterns: list[str]) -> None:
             print(format_status("ERROR", ConsoleColor.RED, f"Failed to delete '{path}': {error}"))
 
 
-def remove_files_matching_patterns(target: Path, patterns: list[str]) -> None:
-    for pattern in patterns:
-        for path in target.rglob(pattern):
-            if not path.is_file():
-                continue
-            print(format_status("REMOVE", ConsoleColor.YELLOW, str(path)))
-            try:
-                remove_readonly(path)
-                path.unlink()
-            except OSError as error:
-                print(format_status("ERROR", ConsoleColor.RED, f"Failed to delete '{path}': {error}"))
+def should_remove_by_gmad_whitelist(root: Path) -> Callable[[Path], bool]:
+    def should_remove(path: Path) -> bool:
+        relative_path = path.relative_to(root)
+        if len(relative_path.parts) > 1 and relative_path.parts[0] in TOP_LEVEL_CUSTOM_FILE_POLICY_DIRS:
+            return False
+        return not is_gmad_whitelisted(relative_path.as_posix().lower())
+
+    return should_remove
+
+
+def is_gmad_whitelisted(path: str) -> bool:
+    valid = False
+    for pattern in GMAD_ADDON_WHITELIST:
+        if pattern.startswith("!"):
+            if fnmatch(path, pattern[1:]):
+                valid = False
+            continue
+        if not valid:
+            valid = fnmatch(path, pattern)
+    return valid
 
 
 def remove_readonly(path: Path) -> None:
@@ -310,10 +394,7 @@ def normalize_quoted_whitespace(match: re.Match[str]) -> str:
 
 
 def content_needs_vmt_update(content: str, normalized_content: str) -> bool:
-    return (
-        normalize_newlines(content) != normalized_content
-        or NON_CRLF_NEWLINE_PATTERN.search(content) is not None
-    )
+    return normalize_newlines(content) != normalized_content or NON_CRLF_NEWLINE_PATTERN.search(content) is not None
 
 
 def sanitize_source_name(name: str) -> str:
