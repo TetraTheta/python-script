@@ -103,8 +103,8 @@ GMAD_ADDON_WHITELIST = (
     "data_static/*.csv",
     "shaders/fxc/*.vcs",
 )
-TOP_LEVEL_CUSTOM_FILE_POLICY_DIRS = {"resource", "scripts"}
-PRESERVED_EMPTY_DIRS = {"resource", "scripts"}
+PRESERVE_DIR = {"lua", "maps_original", "mapsrc", "modelsrc", "resource", "scripts"}
+PRESERVE_FILE = {"thumb.jpg", "thumb.png"}
 SCRIPT_REMOVE_PATTERNS = ("*manifest.txt", "chapterbackgrounds.txt")
 
 
@@ -311,8 +311,6 @@ def remove_empty_directory(current: Path, root: Path) -> None:
                 remove_empty_directory(child, root)
 
         if current != root:
-            if current.parent == root and current.name in PRESERVED_EMPTY_DIRS:
-                return
             try:
                 current.rmdir()
                 print(
@@ -347,7 +345,9 @@ def remove_files_by_policy(target: Path, should_remove: Callable[[Path], bool]) 
 def should_remove_by_gmad_whitelist(root: Path) -> Callable[[Path], bool]:
     def should_remove(path: Path) -> bool:
         relative_path = path.relative_to(root)
-        if len(relative_path.parts) > 1 and relative_path.parts[0] in TOP_LEVEL_CUSTOM_FILE_POLICY_DIRS:
+        if len(relative_path.parts) == 1 and relative_path.name in PRESERVE_FILE:
+            return False
+        if len(relative_path.parts) > 1 and relative_path.parts[0] in PRESERVE_DIR:
             return False
         return not is_gmad_whitelisted(relative_path.as_posix().lower())
 
