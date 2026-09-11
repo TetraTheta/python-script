@@ -5,9 +5,9 @@ import ctypes
 import subprocess
 import sys
 from argparse import ArgumentParser, Namespace
+from collections.abc import Sequence
 from pathlib import Path
 from time import perf_counter
-from typing import Sequence
 
 from library.console import ConsoleColor, format_box, format_status
 
@@ -15,6 +15,8 @@ GAME_DIR = r"E:/Program Files/Steam/steamapps/common/GarrysMod/garrysmod"
 VBSP = r"E:/Program Files/Steam/steamapps/common/GarrysMod/bin/win64/vbspplusplus.exe"
 VVIS = r"E:/Program Files/Steam/steamapps/common/GarrysMod/bin/win64/vvisplusplus.exe"
 VRAD = r"E:/Program Files/Steam/steamapps/common/GarrysMod/bin/win64/vradplusplus.exe"
+
+CommandPart = str | tuple[str, ...]
 
 
 class GmodMapCompileArgs(Namespace):
@@ -78,10 +80,11 @@ def format_duration(seconds: float) -> str:
     return f"{seconds}s"
 
 
-def run_tool(command: Sequence[str]) -> None:
-    print(f"{ConsoleColor.YELLOW}{subprocess.list2cmdline(command)}{ConsoleColor.RESET}", flush=True)
+def run_tool(command: Sequence[CommandPart]) -> None:
+    args = [argument for part in command for argument in ((part,) if isinstance(part, str) else part)]
+    print(f"{ConsoleColor.YELLOW}{subprocess.list2cmdline(args)}{ConsoleColor.RESET}", flush=True)
     try:
-        subprocess.run(command, check=False)
+        subprocess.run(args, check=False)
     except FileNotFoundError as error:
         print(format_status("ERROR", ConsoleColor.RED, str(error)), file=sys.stderr)
 
@@ -97,13 +100,11 @@ def compile_map(source: Path) -> None:
     run_tool(
         [
             VBSP,
-            "-threads",
-            "12",
-            "-leaktest",
-            "-allowdynamicpropsasstatic",
-            "-showineligiblevertexlitprops",
-            "-blocksize",
-            "2048",
+            "-threads", "12",
+            "-AllowDynamicPropsAsStatic",
+            ("-BlockSize", "2048"),
+            "-LeakTest",
+            "-ShowIneligibleVertexLitProps",
             "-game",
             GAME_DIR,
             vmf,
@@ -111,25 +112,26 @@ def compile_map(source: Path) -> None:
     )
 
     print(f"{ConsoleColor.BLUE}================ 02: VVIS ================{ConsoleColor.RESET}", flush=True)
-    run_tool([VVIS, "-threads", "12", "-game", GAME_DIR, bsp])
+    run_tool([VVIS, ("-threads", "12"), "-game", GAME_DIR, bsp])
 
     print(f"{ConsoleColor.BLUE}================ 03: VRAD ================{ConsoleColor.RESET}", flush=True)
     run_tool(
         [
             VRAD,
-            "-threads",
-            "12",
+            ("-threads", "12"),
             "-hdr",
             "-final",
+            "-AmbientOcclusion",
+            "-ForceTextureShadows",
+            "-PropAmbient",
+            ("-StaticPropIndirectMode", "0"),
             "-StaticPropLighting",
-            "-staticproppolys",
-            "-textureshadows",
-            "-worldtextureshadows",
-            "-translucentshadows",
-            "-supportslightprojected",
-            "-supportslightdirectional",
-            "-ao",
-            "-forcetextureshadows",
+            "-StaticPropPolys",
+            "-SupportsLightDirectional",
+            "-SupportsLightProjected",
+            "-TextureShadows",
+            "-TranslucentShadows",
+            "-WorldTextureShadows",
             "-game",
             GAME_DIR,
             bsp,
@@ -140,9 +142,7 @@ def compile_map(source: Path) -> None:
     subprocess.run("nircmd stdbeep", shell=True, check=False)
     print(
         format_status(
-            "INFO",
-            ConsoleColor.GREEN,
-            f"Compile finished in {ConsoleColor.YELLOW}{format_duration(perf_counter() - start)}{ConsoleColor.RESET}",
+            "INFO", ConsoleColor.GREEN, f"Compile finished in {ConsoleColor.YELLOW}{format_duration(perf_counter() - start)}{ConsoleColor.RESET}"
         )
     )
 
