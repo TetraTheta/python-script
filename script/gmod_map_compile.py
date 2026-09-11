@@ -68,6 +68,15 @@ def enable_virtual_terminal() -> None:
             kernel32.SetConsoleMode(handle, mode.value | 0x0004)
 
 
+def set_console_title(title: str) -> None:
+    if sys.platform == "win32":
+        ctypes.windll.kernel32.SetConsoleTitleW(title)
+        return
+
+    if sys.stdout.isatty():
+        print(f"\033]0;{title}\a", end="", flush=True)
+
+
 def format_duration(seconds: float) -> str:
     elapsed = int(seconds)
     hours, remainder = divmod(elapsed, 3600)
@@ -95,12 +104,15 @@ def compile_map(source: Path) -> None:
     bsp = str(source.with_suffix(".bsp"))
     start = perf_counter()
 
+    set_console_title(f"GMod Compile - {map_name}")
     print(format_box(f"Compiling {ConsoleColor.YELLOW}{map_name}{ConsoleColor.RESET}", ConsoleColor.GREEN), flush=True)
+    set_console_title(f"GMod Compile - {map_name} - 01: VBSP")
     print(f"{ConsoleColor.BLUE}================ 01: VBSP ================{ConsoleColor.RESET}", flush=True)
     run_tool(
         [
             VBSP,
-            "-threads", "12",
+            "-threads",
+            "12",
             "-AllowDynamicPropsAsStatic",
             ("-BlockSize", "2048"),
             "-LeakTest",
@@ -111,9 +123,11 @@ def compile_map(source: Path) -> None:
         ]
     )
 
+    set_console_title(f"GMod Compile - {map_name} - 02: VVIS")
     print(f"{ConsoleColor.BLUE}================ 02: VVIS ================{ConsoleColor.RESET}", flush=True)
     run_tool([VVIS, ("-threads", "12"), "-game", GAME_DIR, bsp])
 
+    set_console_title(f"GMod Compile - {map_name} - 03: VRAD")
     print(f"{ConsoleColor.BLUE}================ 03: VRAD ================{ConsoleColor.RESET}", flush=True)
     run_tool(
         [
@@ -138,6 +152,7 @@ def compile_map(source: Path) -> None:
         ]
     )
 
+    set_console_title(f"GMod Compile - {map_name} - DONE")
     print(f"{ConsoleColor.BLUE}================ DONE ================{ConsoleColor.RESET}", flush=True)
     subprocess.run("nircmd stdbeep", shell=True, check=False)
     print(
