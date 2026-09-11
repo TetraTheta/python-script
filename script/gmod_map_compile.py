@@ -12,9 +12,9 @@ from time import perf_counter
 from library.console import ConsoleColor, format_box, format_status
 
 GAME_DIR = r"E:/Program Files/Steam/steamapps/common/GarrysMod/garrysmod"
-VBSP = r"E:/Program Files/Steam/steamapps/common/GarrysMod/bin/win64/vbspplusplus.exe"
-VVIS = r"E:/Program Files/Steam/steamapps/common/GarrysMod/bin/win64/vvisplusplus.exe"
-VRAD = r"E:/Program Files/Steam/steamapps/common/GarrysMod/bin/win64/vradplusplus.exe"
+VBSP = r"E:/PROGRAM/GAME/Tools++/vbsp++.exe"
+VVIS = r"E:/PROGRAM/GAME/Tools++/vvis++.exe"
+VRAD = r"E:/PROGRAM/GAME/Tools++/vrad++.exe"
 
 CommandPart = str | tuple[str, ...]
 
