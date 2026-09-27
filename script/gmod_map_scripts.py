@@ -99,7 +99,7 @@ def main() -> None:
             for item in tokens.items:
                 if isinstance(item.value, str):
                     lines.append(
-                        f"  {{ snd = {quote_lua_string(item.key)}, text = {quote_lua_string(item.value)}, range = 9999, duration = 5, closedcaption = true }},"
+                        f"  {{ snd = {quote_lua_string(item.key)}, text = {quote_lua_string(item.value)}, range = 9999, duration = 5, closedcaption = false }},"
                     )
             lines.extend(
                 [
