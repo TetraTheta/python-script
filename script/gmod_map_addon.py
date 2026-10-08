@@ -274,6 +274,8 @@ def main() -> None:
     "*.vmf",
     "*.vmx",
     ".ignore/*",
+    ".materials/*",
+    ".models/*",
     "AGENTS.md",
     "README.md",
     "fgd/*",

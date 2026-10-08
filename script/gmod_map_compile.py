@@ -111,12 +111,12 @@ def compile_map(source: Path) -> None:
     run_tool(
         [
             VBSP,
-            "-threads",
-            "12",
+            ("-threads", "12"),
             "-AllowDynamicPropsAsStatic",
             ("-BlockSize", "2048"),
             "-LeakTest",
             "-ShowIneligibleVertexLitProps",
+            # "-FullDetail",
             "-game",
             GAME_DIR,
             vmf,
