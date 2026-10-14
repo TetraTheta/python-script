@@ -19,12 +19,36 @@ from library.text_file import (
     read_text_with_fallback,
     write_text,
 )
+from library.valve_vmt import VmtParseError, format_vmt
 
-SDK_SHADER_REPLACEMENTS = (
-    (re.compile("SDK_LightmappedGeneric", re.IGNORECASE), "LightmappedGeneric"),
-    (re.compile("SDK_Sprite", re.IGNORECASE), "Sprite"),
-    (re.compile("SDK_VertexLitGeneric", re.IGNORECASE), "VertexLitGeneric"),
-)
+# GMod와 SDK 2013 양쪽에 동일한 루트 셰이더가 있는 Mapbase 셰이더만 변환한다.
+SDK_SHADER_REPLACEMENTS = {
+    "sdk_bloom": "Bloom",
+    "sdk_cable": "Cable",
+    "sdk_core": "Core",
+    "sdk_decalmodulate": "DecalModulate",
+    "sdk_depthwrite": "DepthWrite",
+    "sdk_engine_post": "Engine_Post",
+    "sdk_eyeball": "Eyeball",
+    "sdk_eyeglint": "EyeGlint",
+    "sdk_eyerefract": "EyeRefract",
+    "sdk_eyes": "Eyes",
+    "sdk_lightmappedgeneric": "LightmappedGeneric",
+    "sdk_lightmappedreflective": "LightmappedReflective",
+    "sdk_monitorscreen": "MonitorScreen",
+    "sdk_refract": "Refract",
+    "sdk_screenspace_general": "screenspace_general",
+    "sdk_shatteredglass": "ShatteredGlass",
+    "sdk_sprite": "Sprite",
+    "sdk_teeth": "Teeth",
+    "sdk_unlitgeneric": "UnlitGeneric",
+    "sdk_unlittwotexture": "UnlitTwoTexture",
+    "sdk_vertexlitgeneric": "VertexLitGeneric",
+    "sdk_water": "Water",
+    "sdk_worldtwotextureblend": "WorldTwoTextureBlend",
+    "sdk_worldvertextransition": "WorldVertexTransition",
+}
+SDK_SHADER_PATTERN = re.compile(r'^(\s*"?)(SDK_[A-Za-z0-9_]+)("?(?:\s*\{)?\s*)$', re.IGNORECASE | re.MULTILINE)
 QUOTED_TEXT_PATTERN = re.compile(r'"([^"]*)"')
 QUOTED_WHITESPACE_PATTERN = re.compile(r"[\t ]+")
 NON_CRLF_NEWLINE_PATTERN = re.compile(r"(?<!\r)\n|\r(?!\n)")
@@ -103,7 +127,7 @@ GMAD_ADDON_WHITELIST = (
     "data_static/*.csv",
     "shaders/fxc/*.vcs",
 )
-PRESERVE_DIR = {"lua", "maps_original", "mapsrc", "modelsrc", "resource", "scripts"}
+PRESERVE_DIR = {".materials", ".models", "lua", "maps_original", "mapsrc", "modelsrc", "resource", "scripts"}
 PRESERVE_FILE = {"thumb.jpg", "thumb.png"}
 SCRIPT_REMOVE_PATTERNS = ("*manifest.txt", "chapterbackgrounds.txt")
 
@@ -385,10 +409,20 @@ def retry_after_remove_readonly(
 
 def normalize_vmt_content(content: str) -> str:
     normalized = normalize_newlines(content)
-    for pattern, replacement in SDK_SHADER_REPLACEMENTS:
-        normalized = pattern.sub(replacement, normalized)
+    normalized = SDK_SHADER_PATTERN.sub(replace_sdk_shader, normalized)
     normalized = "\n".join(line for line in normalized.splitlines() if line.strip())
-    return QUOTED_TEXT_PATTERN.sub(normalize_quoted_whitespace, normalized)
+    normalized = QUOTED_TEXT_PATTERN.sub(normalize_quoted_whitespace, normalized)
+    try:
+        return format_vmt(normalized)
+    except VmtParseError:
+        return normalized
+
+
+def replace_sdk_shader(match: re.Match[str]) -> str:
+    replacement = SDK_SHADER_REPLACEMENTS.get(match.group(2).lower())
+    if replacement is None:
+        return match.group(0)
+    return f"{match.group(1)}{replacement}{match.group(3)}"
 
 
 def normalize_quoted_whitespace(match: re.Match[str]) -> str:
