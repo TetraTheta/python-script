@@ -172,7 +172,8 @@ def _render_block(block: _Block, depth: int) -> list[str]:
     for entry in sorted(block.entries, key=lambda item: item.key.casefold()):
         lines.extend(f"{indent}{comment}" for comment in entry.comments)
         if isinstance(entry.value, str):
-            line = f"{indent}{_quote(entry.key)}\t\t{_quote(entry.value)}"
+            value = entry.value.replace("\\", "/")
+            line = f"{indent}{_quote(entry.key)}\t\t{_quote(value)}"
             if entry.condition is not None:
                 line += f" {entry.condition}"
             if entry.trailing_comment is not None:

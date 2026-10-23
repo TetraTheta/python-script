@@ -127,9 +127,9 @@ GMAD_ADDON_WHITELIST = (
     "data_static/*.csv",
     "shaders/fxc/*.vcs",
 )
-PRESERVE_DIR = {".materials", ".models", "lua", "maps_original", "mapsrc", "modelsrc", "resource", "scripts"}
+PRESERVE_DIR = {".ignore", ".materials", ".models", "lua", "maps_original", "mapsrc", "modelsrc", "resource", "scripts"}
 PRESERVE_FILE = {"thumb.jpg", "thumb.png"}
-SCRIPT_REMOVE_PATTERNS = ("*manifest.txt", "chapterbackgrounds.txt")
+SCRIPT_REMOVE_PATTERNS = ("chapterbackgrounds.txt")
 
 
 class GmodMapAddonArgs(Namespace):
