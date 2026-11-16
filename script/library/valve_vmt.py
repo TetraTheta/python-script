@@ -17,23 +17,23 @@ class _Token:
 
 
 @dataclass(frozen=True)
-class _Entry:
+class KeyValueEntry:
     comments: tuple[str, ...]
     condition: str | None
     key: str
     trailing_comment: str | None
-    value: str | _Block
+    value: str | KeyValueBlock
 
 
 @dataclass(frozen=True)
-class _Block:
-    entries: tuple[_Entry, ...]
+class KeyValueBlock:
+    entries: tuple[KeyValueEntry, ...]
     trailing_comments: tuple[str, ...]
 
 
 @dataclass(frozen=True)
-class _Document:
-    block: _Block
+class KeyValueDocument:
+    block: KeyValueBlock
     comments_before_brace: tuple[str, ...]
     leading_comments: tuple[str, ...]
     shader: str
@@ -46,7 +46,7 @@ class _Parser:
         self.tokens = _tokenize(text)
         self.index = 0
 
-    def parse(self) -> _Document:
+    def parse(self) -> KeyValueDocument:
         leading_comments = self._read_comments()
         shader = self._expect("text")
         comments_before_brace = self._read_comments()
@@ -60,7 +60,7 @@ class _Parser:
         if self.index != len(self.tokens):
             raise self._error("Unexpected content after shader block")
 
-        return _Document(
+        return KeyValueDocument(
             block=block,
             comments_before_brace=tuple(token.text for token in comments_before_brace),
             leading_comments=tuple(token.text for token in leading_comments),
@@ -69,15 +69,15 @@ class _Parser:
             trailing_comments=tuple(token.text for token in trailing_comments),
         )
 
-    def _parse_block(self) -> tuple[_Block, int]:
-        entries: list[_Entry] = []
+    def _parse_block(self) -> tuple[KeyValueBlock, int]:
+        entries: list[KeyValueEntry] = []
 
         while True:
             comments = self._read_comments()
             if self._peek_kind() == "}":
                 closing_brace = self._expect("}")
                 return (
-                    _Block(
+                    KeyValueBlock(
                         entries=tuple(entries),
                         trailing_comments=tuple(token.text for token in comments),
                     ),
@@ -90,7 +90,7 @@ class _Parser:
             comments.extend(self._read_comments())
             value_token = self._next()
             if value_token.kind == "text":
-                value: str | _Block = value_token.text
+                value: str | KeyValueBlock = value_token.text
                 value_end_line = value_token.line
             elif value_token.kind == "{":
                 value, value_end_line = self._parse_block()
@@ -108,7 +108,7 @@ class _Parser:
                 trailing_comment = self._next().text
 
             entries.append(
-                _Entry(
+                KeyValueEntry(
                     comments=tuple(token.text for token in comments),
                     condition=condition,
                     key=key.text,
@@ -150,9 +150,14 @@ class _Parser:
         return comments
 
 
+def parse_keyvalue_document(text: str) -> KeyValueDocument:
+    """Parse one named KeyValues block while retaining comments and entry order."""
+    return _Parser(text).parse()
+
+
 def format_vmt(text: str) -> str:
     """Return canonical VMT text with recursively sorted keys and preserved comments."""
-    document = _Parser(text).parse()
+    document = parse_keyvalue_document(text)
     lines = [*document.leading_comments]
     shader_line = _render_shader(document.shader)
     if document.shader_comment is not None:
@@ -166,7 +171,7 @@ def format_vmt(text: str) -> str:
     return "\n".join(lines) + "\n"
 
 
-def _render_block(block: _Block, depth: int) -> list[str]:
+def _render_block(block: KeyValueBlock, depth: int) -> list[str]:
     indent = "\t" * depth
     lines: list[str] = []
     for entry in sorted(block.entries, key=lambda item: item.key.casefold()):
